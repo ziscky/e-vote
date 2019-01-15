@@ -18,35 +18,6 @@ void Blockchain::Start(){
     //std::function<bool(const std::vector<std::shared_ptr<dht::Value>>&, bool)> cb
     this->dht_net_->InternalChannel([&](const std::vector<std::shared_ptr<dht::Value>>& data, bool expired){
     
-        // //{"id":0,"dat":{"body":{"type":0,"data":"TEXT"}}}
-        // auto obj = msgpack::v3::unpack( (const char*)data[0]->data.data(), data[0]->data.size());
-        // if(obj->is_nil()){
-        //     this->mlogger_->Error("Nil BLOB");
-        //     return true;
-        // }
-        // if(obj->type != msgpack::type::MAP){
-        //     //unsupported
-        // }
-        // this->mlogger_->Info("L1",obj.get());
-
-        // auto payload_blob = utils::findMapValue(obj.get(),"dat");
-        // if(payload_blob->type != msgpack::type::MAP){
-        //     //unsupported
-            
-        // }
-        // this->mlogger_->Info("L2 ",*payload_blob);
-        
-        // payload_blob = utils::findMapValue(*payload_blob,"body");
-        // if(payload_blob->type != msgpack::type::MAP){
-        //     //unsupported
-            
-        // }
-        // this->mlogger_->Info("L3 ",*payload_blob);
-
-
-        // auto data_blob = utils::findMapValue(*payload_blob,"data");
-        // std::vector<uint8_t> data_ = utils::unpackBlob(*data_blob);
-        // std::string data_str{data_.begin(),data_.end()};
         try{
             auto jsonObj =  utils::msgPackToJson((const char*)data[0]->data.data(), data[0]->data.size());
             this->mlogger_->Debug("Received msg on internal channel ",data.size()," bytes from ",jsonObj.dump());
