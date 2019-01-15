@@ -1,5 +1,5 @@
-#ifndef BTCP_H
-#define BTCP_H
+#ifndef BTCP_HPP
+#define BTCP_HPP
 
 class BitcoinProtocol{
     

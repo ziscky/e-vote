@@ -1,3 +1,6 @@
+#ifndef UTILS_HPP
+#define UTILS_HPP
+
 #include "msgpack.hpp"
 #include "json.hpp"
 #include "exceptions.hpp"
@@ -79,4 +82,20 @@ nlohmann::json msgPackToJson(const char* data,size_t size){
     
 }
 
+void splitString(const string& s, char c,vector<string>& v) {
+   size_t i = 0;
+   size_t j = s.find(c); // position of delimiter
+
+   while (j != string::npos) {
+      v.push_back(s.substr(i, j-i));
+      i = ++j;
+      j = s.find(c, j);
+
+      if (j == string::npos)
+         v.push_back(s.substr(i, s.length()));
+   }
 }
+
+}
+
+#endif

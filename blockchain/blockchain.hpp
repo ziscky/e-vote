@@ -1,5 +1,5 @@
-#ifndef BLOCKCHAIN_H
-#define BLOCKCHAIN_H
+#ifndef BLOCKCHAIN_HPP
+#define BLOCKCHAIN_HPP
 
 #include "network/kdht.hpp"
 #include "network/btcp.hpp"

@@ -1,5 +1,5 @@
-#ifndef KDHT_H
-#define KDHT_H
+#ifndef KDHT_HPP
+#define KDHT_HPP
 
 #include <iostream>
 #include <opendht.h>

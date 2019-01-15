@@ -1,3 +1,6 @@
+#ifndef EXCEPTIONS_HPP
+#define EXCEPTIONS_HPP
+
 #include <exception>
 #include <string>
 
@@ -12,3 +15,5 @@ class MSGPACK_FAIL : public exception{
         }
 
 };
+
+#endif
