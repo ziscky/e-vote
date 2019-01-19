@@ -19,6 +19,7 @@
 #include <cryptopp/oids.h>
 #include <cryptopp/channels.h>
 #include <cryptopp/scrypt.h>
+#include <cryptopp/hkdf.h>
 #include "utils/json.hpp"
 #include "utils/utils.hpp"
 
@@ -70,28 +71,31 @@ class KeyGen{
         T GenerateKeys(std::string passwd);
         T GenerateKeys();
         KeyPair LoadKeys(const T&);
-        void test(){std::cout<<"TEST";};
+        bool TestDSKeys(const KeyPair&);
 
     private:
         const bool deterministic_;
         T GenerateDeterministicKeys(std::string);
         T GenerateRandomKeys();
         KeyPair ECCKeyGen(CryptoPP::RandomNumberGenerator&);
-        void DeriveKey(CryptoPP::OFB_Mode<CryptoPP::AES>::Encryption&,const std::string&,const std::string&);
+        CryptoPP::SecByteBlock DeriveKey(const std::string&,const std::string&);
         T EncodeKeyPair(const KeyPair&);
+        std::string TestPRNG(CryptoPP::RandomNumberGenerator&);
 
 };
 
 
 template<typename T> T KeyGen<T>::GenerateKeys(std::string passwd){
-    if(!this->deterministic_)
-        //generate random key if not set to determinism
+    if(!this->deterministic_){
+        //generate random key if not set to 
+        std::cout<<"Defaulting to random key"<<std::endl;
         return this->GenerateRandomKeys();
+    }
     return this->GenerateDeterministicKeys(passwd);   
 }
 
-template<class T> 
-T KeyGen<T>::GenerateKeys(){
+template<typename T> T KeyGen<T>::GenerateKeys(){
+    std::cout<<"Here"<<std::endl;
     if(this->deterministic_)
         throw new std::string("Call with passwd for deterministic generation");
     return this->GenerateRandomKeys();
@@ -105,21 +109,40 @@ template<typename T> T KeyGen<T>::GenerateRandomKeys(){
 }    
 
 
-template<typename T> T KeyGen<T>::GenerateDeterministicKeys(std::string passwd){
-    // CryptoPP::OFB_Mode<CryptoPP::AES>::Encryption prng;
-    CryptoPP::OFB_Mode<CryptoPP::AES>::Encryption prng;;
-    this->DeriveKey(prng,passwd,"e-vote");
+template<typename T> T KeyGen<T>::GenerateDeterministicKeys(std::string passwd){ 
+    auto seed = this->DeriveKey(passwd,"e-vote");
+
+    CryptoPP::CTR_Mode<CryptoPP::AES>::Encryption prng;
+    prng.SetKeyWithIV(seed,32,seed+32,16);    
+    
+    //test PRNG determinism
+    {
+        std::string prev;
+        for(int i=0;i<2;i++){
+            CryptoPP::CTR_Mode<CryptoPP::AES>::Encryption prng;
+            prng.SetKeyWithIV(seed,32,seed+32,16);
+            if(prev.length() == 0){
+                prev = this->TestPRNG(prng);
+                continue;
+            }
+            if (this->TestPRNG(prng) != prev){
+                throw std::string("Invalid PRNG behaviour");
+            }
+
+        }
+
+    }
+
     auto keypair = this->ECCKeyGen(prng);
     return this->EncodeKeyPair(keypair);
-    
 }    
 
-template <typename T> void KeyGen<T>::DeriveKey(CryptoPP::OFB_Mode<CryptoPP::AES>::Encryption& prng,const std::string& passwd,const std::string& salt){
+template <typename T> CryptoPP::SecByteBlock KeyGen<T>::DeriveKey(const std::string& passwd,const std::string& salt){
     //Using scrypt for key derivation
     CryptoPP::SecByteBlock derived(32+16);
     CryptoPP::Scrypt scrypt;
-    scrypt.DeriveKey(derived,32,(const CryptoPP::byte*)&passwd[0],passwd.size(),(const CryptoPP::byte*)&salt[0],salt.size(),1024,8,16);
-    prng.SetKeyWithIV(derived,32,derived+32,16);
+    scrypt.DeriveKey(derived,derived.size(),(const CryptoPP::byte*)&passwd[0],passwd.size(),(const CryptoPP::byte*)&salt[0],salt.size(),1024,8,16);
+    return derived;
 
 }
 
@@ -237,49 +260,31 @@ template<> B64KeyPair KeyGen<B64KeyPair>::EncodeKeyPair(const KeyPair& keypair){
     return B64KeyPair(public_key_str,private_key_str);
 }
 
-void TestDSKeys(const B64KeyPair& keypair){
-    std::string public_key(keypair.public_key);
-    std::string private_key(keypair.private_key);
-    CryptoPP::HexDecoder priv_decoder,pub_decoder1,pub_decoder2;
-    priv_decoder.Put((CryptoPP::byte*)&private_key[0],private_key.size());
-    priv_decoder.MessageEnd();
-
-
-    CryptoPP::ECDSA<CryptoPP::ECP,CryptoPP::SHA256>::PrivateKey PrivateKey;
-    CryptoPP::Integer private_exponent;
-    private_exponent.Decode(priv_decoder,priv_decoder.MaxRetrievable());
-    PrivateKey.Initialize(CryptoPP::ASN1::secp521r1(),private_exponent);
-    std::cout<<"Private key init"<<std::endl;
-
-
-    CryptoPP::ECDSA<CryptoPP::ECP,CryptoPP::SHA256>::PublicKey PublicKey;
-    CryptoPP::ECPPoint public_elem;
-    std::cout<<public_key<<std::endl;
-
+template<typename T> bool KeyGen<T>::TestDSKeys(const KeyPair& keypair){
     CryptoPP::AutoSeededRandomPool prng;
-    CryptoPP::StringSource source(public_key,true,new CryptoPP::Base64Decoder);
-    PublicKey.AccessGroupParameters().Initialize(CryptoPP::ASN1::secp521r1());
-    PublicKey.GetGroupParameters().GetCurve().DecodePoint(public_elem,source,source.MaxRetrievable());
-    PublicKey.SetPublicElement(public_elem);
-    PublicKey.ThrowIfInvalid(prng,3);
-    std::cout << "X: " << std::hex << public_elem.x << endl;
-    std::cout << "Y: " << std::hex << public_elem.y << endl;
-    std::cout<<"Public key init"<<std::endl;
-
     //Test message signing and verification
     std::string plain("plaintext");
     std::string sign;
 
-    CryptoPP::ECDSA<CryptoPP::ECP,CryptoPP::SHA256>::Signer signer(PrivateKey);
+    CryptoPP::ECDSA<CryptoPP::ECP,CryptoPP::SHA256>::Signer signer(keypair.private_key);
     CryptoPP::StringSource s(plain,true,new CryptoPP::SignerFilter(prng,signer,new CryptoPP::StringSink(sign)));
     std::cout<<sign<<std::endl;
 
-    CryptoPP::ECDSA<CryptoPP::ECP,CryptoPP::SHA256>::Verifier ver(PublicKey);
     bool res;
+    CryptoPP::ECDSA<CryptoPP::ECP,CryptoPP::SHA256>::Verifier ver(keypair.public_key);
     CryptoPP::StringSource ss(sign+plain+"x",true,new CryptoPP::SignatureVerificationFilter(ver,new CryptoPP::ArraySink((CryptoPP::byte*)&res,sizeof(res))));
-    std::cout<<res<<std::endl;
-
+    return res;
 
 }
 
+template<typename T> std::string KeyGen<T>::TestPRNG(CryptoPP::RandomNumberGenerator& rng){
+    
+    CryptoPP::SecByteBlock block(16);
+    rng.GenerateBlock(block,block.size());    
+    std::string s;
+    CryptoPP::HexEncoder hex(new CryptoPP::StringSink(s));
+    hex.Put(block, block.size());
+    hex.MessageEnd();
+    return s;
+}
 #endif
