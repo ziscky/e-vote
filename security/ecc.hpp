@@ -113,6 +113,8 @@ template<typename T> T KeyGen<T>::GenerateDeterministicKeys(std::string passwd){
     auto seed = this->DeriveKey(passwd,"e-vote");
 
     CryptoPP::CTR_Mode<CryptoPP::AES>::Encryption prng;
+    //
+    //pointer to beginning of secbyte_block,size of the block, pinter to beginning of IV 
     prng.SetKeyWithIV(seed,32,seed+32,16);    
     
     //test PRNG determinism
@@ -137,15 +139,19 @@ template<typename T> T KeyGen<T>::GenerateDeterministicKeys(std::string passwd){
     return this->EncodeKeyPair(keypair);
 }    
 
+//returns a constant length derived key from the password and salt using the scrypt algorithm.
 template <typename T> CryptoPP::SecByteBlock KeyGen<T>::DeriveKey(const std::string& passwd,const std::string& salt){
     //Using scrypt for key derivation
+    //32 bit key plus 16 bit Initialization vector.
     CryptoPP::SecByteBlock derived(32+16);
     CryptoPP::Scrypt scrypt;
+    //dest,dest_size,pointer to first char of the password,size of the password,pointer to the first char of the salt,length of the salt,
     scrypt.DeriveKey(derived,derived.size(),(const CryptoPP::byte*)&passwd[0],passwd.size(),(const CryptoPP::byte*)&salt[0],salt.size(),1024,8,16);
     return derived;
 
 }
 
+//returns an Elliptic curve public/private keypair generated using the standard curve p=521 as defined by NIST
 template<typename T> KeyPair KeyGen<T>::ECCKeyGen(CryptoPP::RandomNumberGenerator& prng){
     CryptoPP::ECDSA<CryptoPP::ECP,CryptoPP::SHA256>::PrivateKey private_key;
     
@@ -158,6 +164,7 @@ template<typename T> KeyPair KeyGen<T>::ECCKeyGen(CryptoPP::RandomNumberGenerato
 
     return KeyPair(private_key,public_key);
 }
+
 
 template<> KeyPair KeyGen<B64KeyPair>::LoadKeys(const B64KeyPair& encoded_keypair){
     std::string public_key( encoded_keypair.public_key);

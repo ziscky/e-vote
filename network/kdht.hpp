@@ -88,7 +88,7 @@ class DHTNode{
         //for authentication,direct messages etc...
         void InternalChannel(std::function<bool(const std::vector<std::shared_ptr<dht::Value>>&, bool)>);
         std::string RoutingTable();
-        dht::NodeStats NodeStats(); 
+        void NodeStats();
         
 
         

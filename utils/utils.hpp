@@ -9,10 +9,12 @@
 
 namespace utils{
 
+//retrieves a msgpack object from a key-value masgpack map.
 msgpack::object* findMapValue(const msgpack::object& map, const std::string& key) {
     if (map.type != msgpack::type::MAP) throw msgpack::type_error();
     for (unsigned i = 0; i < map.via.map.size; i++) {
         auto& o = map.via.map.ptr[i];
+        //make sure the key is a string and check of the map value is registered with the provided key as a string.
         if (o.key.type == msgpack::type::STR && o.key.as<std::string>() == key)
             return &o.val;
     }
@@ -20,6 +22,7 @@ msgpack::object* findMapValue(const msgpack::object& map, const std::string& key
 }
 
 
+//converts a msgpack object to a vector of unsigned ints(blob)
 std::vector<uint8_t> unpackBlob(const msgpack::object& o) {
     switch (o.type) {
     case msgpack::type::BIN:
@@ -28,6 +31,7 @@ std::vector<uint8_t> unpackBlob(const msgpack::object& o) {
         return {o.via.str.ptr, o.via.str.ptr+o.via.str.size};
     case msgpack::type::ARRAY: {
         std::vector<uint8_t> ret(o.via.array.size);
+        //convert all msgpack objects in the array to a vector of uint8_ts(blobs)
         std::transform(o.via.array.ptr, o.via.array.ptr+o.via.array.size, ret.begin(), [](const msgpack::object& b) {
             return b.as<uint8_t>();
         });
@@ -39,6 +43,7 @@ std::vector<uint8_t> unpackBlob(const msgpack::object& o) {
 }
 
 
+//converts a msgpack formatted blob to a JSON object
 nlohmann::json msgPackToJson(const char* data,size_t size){
     //{"id":0,"dat":{"body":{"type":0,"data":"TEXT"}}}
     auto obj = msgpack::v3::unpack( data, size);
@@ -68,7 +73,6 @@ nlohmann::json msgPackToJson(const char* data,size_t size){
         //unsupported
         throw new MSGPACK_FAIL("'body' object not a MAP");  
     }
-    
     
     auto data_blob = utils::findMapValue(*payload_blob,"data");
     if(data_blob == nullptr){

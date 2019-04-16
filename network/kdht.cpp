@@ -1,13 +1,10 @@
 #include <exception>
 #include <sys/socket.h>
+#include <netdb.h>
 #include "kdht.hpp"
 #include "opendht.h"
 #include "logger/log.hpp"
 #include "utils/json.hpp"
-#include <exception>
-#include <sys/socket.h>
-// #include <msgpack.hpp>
-
 
 bool DHTNode::Start(){
     try{
@@ -104,6 +101,22 @@ std::string DHTNode::RoutingTable(){
     return this->node_.getRoutingTablesLog(AF_INET);
 }
 
-dht::NodeStats DHTNode::NodeStats(){
-    return this->node_.getNodesStats(AF_INET);
+void DHTNode::NodeStats(){
+    std::vector<dht::NodeExport> nodes = this->node_.exportNodes();
+    std::for_each(nodes.begin(),nodes.end(),[&](dht::NodeExport node){
+        char host[NI_MAXHOST];
+        char port[NI_MAXSERV];
+
+        int rc = getnameinfo((struct sockaddr *)&node.ss, node.sslen, host, sizeof(host), port, sizeof(port), NI_NUMERICHOST | NI_NUMERICSERV);
+        if(rc != 0){
+            this->mlogger_->Error("Failed to decode ip:port from socket");
+            return;
+        }
+        std::string host_str(host);
+        std::string port_str(port);
+
+        std::cout<<host_str<<":"<<port_str<<endl;
+
+
+    });
 }

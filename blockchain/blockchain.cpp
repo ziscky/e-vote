@@ -16,7 +16,7 @@ void Blockchain::Start(){
 
     //TODO:: PKCS authentication of origin node
     //std::function<bool(const std::vector<std::shared_ptr<dht::Value>>&, bool)> cb
-    this->dht_net_->InternalChannel([&](const std::vector<std::shared_ptr<dht::Value>>& data, bool expired){
+    this->dht_net_->InternalChannel([&](const std::vector<std::shared_ptr<dht::Value>>& data, bool expired)->bool{
     
         try{
             auto jsonObj =  utils::msgPackToJson((const char*)data[0]->data.data(), data[0]->data.size());
