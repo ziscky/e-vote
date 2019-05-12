@@ -6,6 +6,7 @@
 #include "exceptions.hpp"
 #include <string>
 #include <vector>
+#include <initializer_list>
 
 namespace utils{
 
@@ -31,6 +32,7 @@ std::vector<uint8_t> unpackBlob(const msgpack::object& o) {
         return {o.via.str.ptr, o.via.str.ptr+o.via.str.size};
     case msgpack::type::ARRAY: {
         std::vector<uint8_t> ret(o.via.array.size);
+        
         //convert all msgpack objects in the array to a vector of uint8_ts(blobs)
         std::transform(o.via.array.ptr, o.via.array.ptr+o.via.array.size, ret.begin(), [](const msgpack::object& b) {
             return b.as<uint8_t>();
@@ -99,6 +101,17 @@ void splitString(const string& s, char c,vector<string>& v) {
          v.push_back(s.substr(i, s.length()));
    }
 }
+
+bool checkParams(const nlohmann::json& j,std::initializer_list<string> keys){
+    for(auto& key: keys){
+        if(j[key].is_null()){
+            return false;
+        }
+    }
+    return true;
+    
+}
+
 
 }
 
