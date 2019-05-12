@@ -1,6 +1,14 @@
 #ifndef BLOCKCHAIN_HPP
 #define BLOCKCHAIN_HPP
 
+#define TX_BROADCAST 0
+#define NODE_AUTH 1
+#define BX_BROADCAST 2
+
+#define AUTH_CHALLENGE 0
+#define AUTH_SOLUTION 1
+
+
 #include "network/kdht.hpp"
 #include "network/btcp.hpp"
 #include "utils/json.hpp"
@@ -41,13 +49,30 @@ class Blockchain{
         //total votes for each known node
         std::unordered_map<string,int> node_votes_;
 
+        //stores  a map of node_ids against public key.
+        std::vector<string> known_nodes_;
+
         std::shared_ptr<std::condition_variable> cond;
 
         std::shared_ptr<Logger> mlogger_;
 
+        //included in callback for 
+        void ReceiveTransaction();
+        void ReceiveBlock();
+        void AuthNode(const nlohmann::json&);
+
+        void BroadcastTransaction();
+        void BroadcastBlock();
+        
+        void CreateBlock();
+        void CreateTransaction();
+
+        bool verifyPK(const string&);
+        
+
         bool running_ = false;
 
-        void AuthNode();
+        
     public:
         Blockchain(NodeConf dht_conf,std::shared_ptr<Logger> logger){
             cond = std::make_shared<std::condition_variable>();
@@ -58,7 +83,7 @@ class Blockchain{
         std::unique_ptr<DHTNode> dht_net_;
         void Start();
         std::string DHTRoutingTable();
-        dht::NodeStats DHTNodes();
+        void DHTNodes();
         bool IsRunning();
 
 };
