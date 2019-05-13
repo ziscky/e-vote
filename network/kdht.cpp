@@ -47,7 +47,7 @@ bool DHTNode::Start(){
     return true;
 }
 
-void DHTNode::UnverifiedChannel(std::function<bool(const std::vector<std::shared_ptr<dht::Value>>&, bool)> cb){
+void DHTNode::UnverifiedTXChannel(std::function<bool(const std::vector<std::shared_ptr<dht::Value>>&, bool)> cb){
     try{
         this->node_.listen(dht::InfoHash::get(unverified_channel_),cb);
     }catch(const exception& e){
@@ -55,13 +55,14 @@ void DHTNode::UnverifiedChannel(std::function<bool(const std::vector<std::shared
     }
 }
 
-void DHTNode::VerifiedChannel(std::function<bool(const std::vector<std::shared_ptr<dht::Value>>&, bool)> cb){
+void DHTNode::VerifiedTXChannel(std::function<bool(const std::vector<std::shared_ptr<dht::Value>>&, bool)> cb){
     try{
         this->node_.listen(dht::InfoHash::get(verified_channel_),cb);
     }catch(const exception& e){
         this->mlogger_->Error(e.what());
     }
 }
+
 
 void DHTNode::InternalChannel(std::function<bool(const std::vector<std::shared_ptr<dht::Value>>&, bool)> cb){
     try{
@@ -71,15 +72,19 @@ void DHTNode::InternalChannel(std::function<bool(const std::vector<std::shared_p
     }
 }
 
-void DHTNode::Put(std::string key,int type,nlohmann::json data,std::function<void(bool)> cb){
+void DHTNode::AnnounceChannel(std::function<bool(const std::vector<std::shared_ptr<dht::Value>>&, bool)> cb){
     try{
-        nlohmann::json j;
-        j["data"] = "DATA";//data.dump();
-        j["signature"] = "RSA_SIGNED";
+        this->node_.listen(dht::InfoHash::get(announce_channel_),cb);
+    }catch(const exception& e){
+        this->mlogger_->Error(e.what());
+    }
+}
 
-        std::string the_data = j.dump();
-        
-        auto p = std::make_unique<dht::Value>((const uint8_t*)the_data.data(), the_data.size());
+
+
+void DHTNode::Put(std::string key,std::string data,std::function<void(bool)> cb){
+    try{
+        auto p = std::make_unique<dht::Value>((const uint8_t*)data.data(), data.size());
         // auto p = std::make_unique<dht::Value>(packed);
 
         node_.put(key,p,cb);

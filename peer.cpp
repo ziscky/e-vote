@@ -7,8 +7,6 @@
 #include <readline/readline.h>
 #include <readline/history.h>
 #include "blockchain/blockchain.hpp"
-#include "logger/log.hpp"
-#include "utils/json.hpp"
 
 void asciiPrint();
 void printHelp();
@@ -29,6 +27,8 @@ int main(int argc,char **argv){
             c["DHT_INTERNAL"] = "";
             c["DHT_VERIFIED"] = "";
             c["DHT_UNVERIFIED"] = "";
+            c["DHT_ANNOUNCEMENT"] = "";
+            c["DHT_BLOCK"] = "";
             c["MAINNET"] = false;
             c["MAINNET_ADDR"] = "";
             c["TESTNET_ADDR"] = "";
@@ -38,6 +38,10 @@ int main(int argc,char **argv){
             out<<std::setw(4)<<c;
             out.close();
             return 0;
+        }
+        if(argc<3){
+            std::cerr<<"Provide path to keyfile"<<std::endl;
+            return -1;
         }
         std::ifstream conf_file(argv[1]);
         json parsed;
@@ -49,6 +53,8 @@ int main(int argc,char **argv){
         conf.main = parsed["MAINNET"];
         conf.mainnet_addr = parsed["MAINNET_ADDR"];
         conf.testnet_addr = parsed["TESTNET_ADDR"];
+        conf.announce_channel = parsed["DHT_ANNOUNCEMENT"];
+        conf.block_channel = parsed["DHT_BLOCK"];
         conf.port = parsed["PORT"];
         conf.node_id = parsed["NODE_ID"];
         
@@ -57,7 +63,10 @@ int main(int argc,char **argv){
         return -1;
     }
     std::shared_ptr<Logger> logger = std::make_shared<Logger>();
-    std::unique_ptr<Blockchain> blockchain = std::make_unique<Blockchain>(conf,logger);
+    std::shared_ptr<Identity> id = std::make_shared<Identity>(argv[2]);
+    
+    std::unique_ptr<Blockchain> blockchain = std::make_unique<Blockchain>(conf,id,logger);
+    blockchain->AddKnownNodes("nodes.json");
     // auto b = new Blockchain(conf,logger);
 
     asciiPrint();
@@ -86,19 +95,19 @@ int main(int argc,char **argv){
             continue;
         }
         if(line=="nodes"){
-            auto nodes = blockchain->DHTNodes();
-            logger->Info(nodes.toString());
+            blockchain->DHTNodes();
+            // logger->Info(nodes.toString());
             continue;
         }
-        if(line == "test1"){
-            json j;
-            j["userid"] = "1234";
-            j["signed"] = "signed_auth_key";
-            blockchain->dht_net_->Put(conf.internal_channel,0,j,[&logger](bool success){
-                logger->Debug("Put operation ",(success?"Succcess":"Failure"));
-            });
+        // if(line == "test1"){
+        //     json j;
+        //     j["userid"] = "1234";
+        //     j["signed"] = "signed_auth_key";
+        //     blockchain->dht_net_->Put(conf.internal_channel,0,j,[&logger](bool success){
+        //         logger->Debug("Put operation ",(success?"Succcess":"Failure"));
+        //     });
 
-        }
+        // }
     }
     
 }
