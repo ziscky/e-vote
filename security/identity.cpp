@@ -16,7 +16,9 @@
 #include <cryptopp/oids.h>
 #include <cryptopp/channels.h>
 #include <cryptopp/scrypt.h>
-#include <cryptopp/hkdf.h> 
+#include <cryptopp/hkdf.h>
+#include <cryptopp/sha.h>
+#include <cryptopp/filters.h>
 
 Identity::Identity(std::string public_key,std::string private_key,std::string e_public_key,std::string e_private_key){
     encoded_keypair_ = std::make_unique<HexKeyPair>(public_key,private_key,e_public_key,e_private_key);
@@ -86,14 +88,13 @@ bool Identity::VerifyData(const std::string& data,const std::string& signature_e
 bool Identity::VerifyData(const std::string& public_key,const std::string& data,const std::string& signature_encoded){
     bool res = false;
     std::string signature;
-    std::cout<<"here"<<std::endl;
 
     CryptoPP::HexDecoder decoder(new CryptoPP::StringSink(signature));
     CryptoPP::ChannelSwitch cs;
     cs.AddDefaultRoute(decoder);
- std::cout<<"here2"<<std::endl;
+ 
     CryptoPP::StringSource source_(signature_encoded,true,new CryptoPP::Redirector(cs));
-     std::cout<<"here3"<<std::endl;
+ 
     CryptoPP::AutoSeededRandomPool prng;
     //public key
     CryptoPP::StringSource e_source(public_key,true,new CryptoPP::HexDecoder);
@@ -105,10 +106,10 @@ bool Identity::VerifyData(const std::string& public_key,const std::string& data,
     E_PublicKey.GetKey().GetGroupParameters().GetCurve().DecodePoint(e_public_elem,e_source,e_source.MaxRetrievable());
     E_PublicKey.AccessKey().SetPublicElement(e_public_elem);
     E_PublicKey.AccessKey().ThrowIfInvalid(prng,3);
- std::cout<<"here4"<<std::endl;
+ 
     CryptoPP::ECDSA<CryptoPP::ECP,CryptoPP::SHA256>::Verifier verifier(E_PublicKey);
     CryptoPP::StringSource ss(signature+data,true,new CryptoPP::SignatureVerificationFilter(verifier,new CryptoPP::ArraySink((CryptoPP::byte*)&res,sizeof(res))));
- std::cout<<"here6"<<res<<std::endl;
+ 
     return res;
 }
 
@@ -158,7 +159,7 @@ std::string Identity::EncryptData(const std::string& public_key,const std::strin
     E_PublicKey.AccessKey().ThrowIfInvalid(prng,3);
 
     std::string cipher,cipher_encoded;
-    CryptoPP::StringSource src(plain,true,new CryptoPP::PK_EncryptorFilter(prng,this->keypair_->e_public_key,new CryptoPP::StringSink(cipher)));
+    CryptoPP::StringSource src(plain,true,new CryptoPP::PK_EncryptorFilter(prng,E_PublicKey,new CryptoPP::StringSink(cipher)));
 
      //create hex encoder
     CryptoPP::Base64Encoder encoder(new CryptoPP::StringSink(cipher_encoded));
@@ -168,4 +169,11 @@ std::string Identity::EncryptData(const std::string& public_key,const std::strin
     CryptoPP::StringSource src1(cipher,true,new CryptoPP::Redirector(cs));
     return cipher_encoded;
     
+}
+
+std::string Identity::ComputeHash(const std::string& data){
+    CryptoPP::SHA256 hash_func;
+    std::string hash;
+    CryptoPP::StringSource src(data,true,new CryptoPP::HashFilter(hash_func,new CryptoPP::HexEncoder(new CryptoPP::StringSink(hash))));
+    return hash;
 }

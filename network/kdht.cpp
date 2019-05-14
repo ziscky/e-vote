@@ -47,22 +47,21 @@ bool DHTNode::Start(){
     return true;
 }
 
-void DHTNode::UnverifiedTXChannel(std::function<bool(const std::vector<std::shared_ptr<dht::Value>>&, bool)> cb){
+void DHTNode::TXChannel(std::function<bool(const std::vector<std::shared_ptr<dht::Value>>&, bool)> cb){
     try{
-        this->node_.listen(dht::InfoHash::get(unverified_channel_),cb);
+        this->node_.listen(dht::InfoHash::get(tx_channel_),cb);
     }catch(const exception& e){
         this->mlogger_->Error(e.what());
     }
 }
 
-void DHTNode::VerifiedTXChannel(std::function<bool(const std::vector<std::shared_ptr<dht::Value>>&, bool)> cb){
+void DHTNode::BlockTXChannel(std::function<bool(const std::vector<std::shared_ptr<dht::Value>>&, bool)> cb){
     try{
-        this->node_.listen(dht::InfoHash::get(verified_channel_),cb);
+        this->node_.listen(dht::InfoHash::get(block_channel_),cb);
     }catch(const exception& e){
         this->mlogger_->Error(e.what());
     }
 }
-
 
 void DHTNode::InternalChannel(std::function<bool(const std::vector<std::shared_ptr<dht::Value>>&, bool)> cb){
     try{
@@ -82,12 +81,14 @@ void DHTNode::AnnounceChannel(std::function<bool(const std::vector<std::shared_p
 
 
 
-void DHTNode::Put(std::string key,std::string data,std::function<void(bool)> cb){
+void DHTNode::Put(const std::string& key,const std::string& data,std::function<void(bool)> cb){
     try{
         auto p = std::make_unique<dht::Value>((const uint8_t*)data.data(), data.size());
         // auto p = std::make_unique<dht::Value>(packed);
 
         node_.put(key,p,cb);
+        // node_.dumpTables();
+        
     }catch(const exception& e){
         this->mlogger_->Error(e.what());
         cb(false);
@@ -95,7 +96,7 @@ void DHTNode::Put(std::string key,std::string data,std::function<void(bool)> cb)
 }
 
 
-void DHTNode::Get(std::string key,std::function<void(std::vector<uint8_t>)> cb){
+void DHTNode::Get(const std::string& key,std::function<void(std::vector<uint8_t>)> cb){
     this->node_.get<std::vector<uint8_t>>(dht::InfoHash::get(key),[&](std::vector<uint8_t>&& data)->bool{
         cb(data);
         return true;

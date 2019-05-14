@@ -48,8 +48,6 @@ int main(int argc,char **argv){
         conf_file >> parsed;
 
         conf.internal_channel = parsed["DHT_INTERNAL"];
-        conf.verified_channel = parsed["DHT_VERIFIED"];
-        conf.unverified_channel = parsed["DHT_UNVERIFIED"];
         conf.main = parsed["MAINNET"];
         conf.mainnet_addr = parsed["MAINNET_ADDR"];
         conf.testnet_addr = parsed["TESTNET_ADDR"];

@@ -71,7 +71,7 @@ struct HexKeyPair{
 template <typename T>
 class KeyGen{
     public:
-        KeyGen(bool deterministic):deterministic_(deterministic){};
+        explicit KeyGen(bool deterministic):deterministic_(deterministic){};
         ~KeyGen(){};
         T GenerateKeys(std::string passwd);
         T GenerateKeys();

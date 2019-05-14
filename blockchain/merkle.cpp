@@ -17,8 +17,8 @@ MerkleNode::MerkleNode(std::shared_ptr<MerkleNode> val){
 }
 
 MerkleNode::MerkleNode(std::shared_ptr<MerkleNode> left,std::shared_ptr<MerkleNode> right){
-    this->left_ = left;
-    this->right_ = right; 
+    this->left_ = std::move(left);
+    this->right_ = std::move(right); 
 
     //
     std::string hash("H(");
