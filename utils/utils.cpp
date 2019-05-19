@@ -1,3 +1,4 @@
+#include <iostream>
 #include "utils.hpp"
 
 namespace utils{
@@ -94,11 +95,20 @@ void splitString(const string& s, char c,vector<string>& v) {
 }
 
 bool checkParams(const nlohmann::json& j,std::initializer_list<string> keys){
-    for(auto& key: keys){
-        if(j[key].is_null()){
-            return false;
+    std::string k;
+    try{
+        for(auto& key: keys){
+            k = key;
+            if(j[key].is_null()){
+                return false;
+            }
         }
+    }catch(std::exception& e){
+        std::cout<<"EXCEPTION: "<<std::endl;
+        std::cout<<k<<e.what()<<std::endl;
+        return false;
     }
+
     return true;
     
 }

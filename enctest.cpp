@@ -8,7 +8,7 @@
 
 int main(){
     KeyGen<HexKeyPair> keygen(true);
-    while(false){
+    while(true){
         std::cout<<"enter key: ";
         char key[100];
         std::cin>>key;

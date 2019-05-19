@@ -47,7 +47,7 @@ bool DHTNode::Start(){
     return true;
 }
 
-void DHTNode::TXChannel(std::function<bool(const std::vector<std::shared_ptr<dht::Value>>&, bool)> cb){
+void DHTNode::TXChannel(std::function<bool(const std::vector<std::shared_ptr<dht::Value>>&)> cb){
     try{
         this->node_.listen(dht::InfoHash::get(tx_channel_),cb);
     }catch(const exception& e){
@@ -55,7 +55,7 @@ void DHTNode::TXChannel(std::function<bool(const std::vector<std::shared_ptr<dht
     }
 }
 
-void DHTNode::BlockTXChannel(std::function<bool(const std::vector<std::shared_ptr<dht::Value>>&, bool)> cb){
+void DHTNode::BXChannel(std::function<bool(const std::vector<std::shared_ptr<dht::Value>>&)> cb){
     try{
         this->node_.listen(dht::InfoHash::get(block_channel_),cb);
     }catch(const exception& e){
@@ -63,7 +63,7 @@ void DHTNode::BlockTXChannel(std::function<bool(const std::vector<std::shared_pt
     }
 }
 
-void DHTNode::InternalChannel(std::function<bool(const std::vector<std::shared_ptr<dht::Value>>&, bool)> cb){
+void DHTNode::InternalChannel(std::function<bool(const std::vector<std::shared_ptr<dht::Value>>&)> cb){
     try{
         this->node_.listen(dht::InfoHash::get(internal_channel_),cb);
     }catch(const exception& e){
@@ -71,7 +71,7 @@ void DHTNode::InternalChannel(std::function<bool(const std::vector<std::shared_p
     }
 }
 
-void DHTNode::AnnounceChannel(std::function<bool(const std::vector<std::shared_ptr<dht::Value>>&, bool)> cb){
+void DHTNode::AnnounceChannel(std::function<bool(const std::vector<std::shared_ptr<dht::Value>>&)> cb){
     try{
         this->node_.listen(dht::InfoHash::get(announce_channel_),cb);
     }catch(const exception& e){

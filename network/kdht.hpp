@@ -41,9 +41,6 @@ class DHTNode{
         std::string testnet_;
         std::string unverified_channel_;
         std::string verified_channel_;
-        std::string tx_channel_;
-        
-        std::string block_channel_;
 
         bool running_ = false; 
         bool bootstrap_ = false;
@@ -55,6 +52,8 @@ class DHTNode{
     public:
         std::string internal_channel_;
         std::string announce_channel_;
+        std::string tx_channel_;
+        std::string block_channel_;
         DHTNode(NodeConf conf,std::shared_ptr<std::condition_variable> c,std::shared_ptr<Logger> logger):cond_(c),mlogger_(logger){
             tx_channel_ = conf.tx_channel;
             internal_channel_ = conf.internal_channel;
@@ -90,13 +89,13 @@ class DHTNode{
         void Put(const std::string&,const std::string&,std::function<void(bool)>);
         void Get(const std::string&,std::function<void(std::vector<uint8_t>)>);
 
-        void AnnounceChannel(std::function<bool(const std::vector<std::shared_ptr<dht::Value>>&, bool)>);
-        void BlockTXChannel(std::function<bool(const std::vector<std::shared_ptr<dht::Value>>&, bool)>);
-        void TXChannel(std::function<bool(const std::vector<std::shared_ptr<dht::Value>>&, bool)>);
+        void AnnounceChannel(std::function<bool(const std::vector<std::shared_ptr<dht::Value>>&)>);
+        void BXChannel(std::function<bool(const std::vector<std::shared_ptr<dht::Value>>&)>);
+        void TXChannel(std::function<bool(const std::vector<std::shared_ptr<dht::Value>>&)>);
         
         //starts a thread that listens for messages on h(node_id_)
         //for authentication,direct messages etc...
-        void InternalChannel(std::function<bool(const std::vector<std::shared_ptr<dht::Value>>&, bool)>);
+        void InternalChannel(std::function<bool(const std::vector<std::shared_ptr<dht::Value>>&)>);
         
         
         std::string RoutingTable();

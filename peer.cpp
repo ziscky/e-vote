@@ -97,15 +97,22 @@ int main(int argc,char **argv){
             // logger->Info(nodes.toString());
             continue;
         }
-        // if(line == "test1"){
-        //     json j;
-        //     j["userid"] = "1234";
-        //     j["signed"] = "signed_auth_key";
-        //     blockchain->dht_net_->Put(conf.internal_channel,0,j,[&logger](bool success){
-        //         logger->Debug("Put operation ",(success?"Succcess":"Failure"));
-        //     });
-
-        // }
+        if(line == "tx"){
+            blockchain->BroadcastTransaction();
+            continue;
+        }
+        if(line == "debug"){
+            blockchain->PrintNodes();
+            continue;
+        }
+        if(line == "viewtx"){
+            blockchain->PrintTX();
+            continue;
+        }
+        if(line == "viewbx"){
+            blockchain->PrintBlocks();
+            continue;
+        }
     }
     
 }

@@ -1,5 +1,8 @@
 #include "merkle.hpp"
 #include <iostream>
+#include <cryptopp/filters.h>
+#include <cryptopp/hex.h>
+#include <cryptopp/sha.h>
 
 MerkleNode::MerkleNode(std::string val){
     this->value_ = val;
@@ -21,20 +24,19 @@ MerkleNode::MerkleNode(std::shared_ptr<MerkleNode> left,std::shared_ptr<MerkleNo
     this->right_ = std::move(right); 
 
     //
-    std::string hash("H(");
+    std::string hash;
     if(this->left_)
         hash.append(this->left_->Hash());
     
     if(this->right_)
         hash.append(this->right_->Hash());
-    hash.append(")");
 
-    this->hash_ = hash;
+    this->value_ = hash;
+    this->hash_ = this->ComputeHash();
 }
 
 
 MerkleNode::~MerkleNode(){
-    std::cout<<"OBJ DEST"<<std::endl;
 }
 
 std::shared_ptr<MerkleNode> MerkleNode::Left(){
@@ -91,10 +93,10 @@ std::shared_ptr<MerkleNode> MerkleNode::MerkleTree(std::vector<std::shared_ptr<M
 
 
 std::string MerkleNode::ComputeHash(){
-    std::string h("H(");
-    h.append(this->value_);
-    h.append(")");
-    return h;
+    CryptoPP::SHA256 hash_func;
+    std::string hash;
+    CryptoPP::StringSource src(this->value_,true,new CryptoPP::HashFilter(hash_func,new CryptoPP::HexEncoder(new CryptoPP::StringSink(hash))));
+    return hash;
 }
 
 bool MerkleNode::Validate(){
