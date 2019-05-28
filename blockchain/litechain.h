@@ -4,9 +4,15 @@
 
 #ifndef E_VOTE_LITECHAIN_H
 #define E_VOTE_LITECHAIN_H
+#include "blockchain.hpp"
 
 
-class litechain {
+class Litechain  {//: public Blockchain{
+    public:
+        Litechain(){
+//            Blockchain();
+        };
+
 
 };
 

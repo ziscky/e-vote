@@ -79,6 +79,13 @@ void DHTNode::AnnounceChannel(std::function<bool(const std::vector<std::shared_p
     }
 }
 
+void DHTNode::SyncChannel(std::function<bool(const std::vector<std::shared_ptr<dht::Value>>&)> cb){
+    try{
+        this->node_.listen(dht::InfoHash::get(sync_channel_),cb);
+    }catch(const exception& e){
+        this->mlogger_->Error(e.what());
+    }
+}
 
 
 void DHTNode::Put(const std::string& key,const std::string& data,std::function<void(bool)> cb){

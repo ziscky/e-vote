@@ -1,14 +1,13 @@
-#include <utility>
-
 #include "blockchain.hpp"
 #include "opendht.h"
 #include "merkle.hpp"
-#include <sort.h>
+#include <algorithm>
 #include <vector>
 #include <map>
 #include <iostream>
 #include <fstream>
 #include <string>
+#include <utility>
 #include <msgpack.hpp>
 
 /*
@@ -35,10 +34,15 @@ void Blockchain::Start(){
     this->verification_worker_ = std::thread(&Blockchain::VerificationWorker,this);
 
 
-    //start block worker thread
+    //start block worker threads
     this->block_worker_active_ = true;
     this->block_worker_ = std::thread(&Blockchain::BlockWorker,this);
     this->rx_block_worker_ = std::thread(&Blockchain::RXBlockWorker,this);
+    this->bx_block_worker_ = std::thread(&Blockchain::BXBlockWorker,this);
+
+    //start sync tx thread
+    this->sync_worker_active_ = true;
+    this->sync_worker_  = std::thread(&Blockchain::SyncWorker,this);
 
 
 
@@ -49,8 +53,6 @@ void Blockchain::Start(){
 
         auto dsa_publicKey = jsonObj["dsapk"].get<string>();
         auto ies_publicKey = jsonObj["iespk"].get<string>();
-
-
 
         //check if we've sent a challenge already
         if(this->auth_solutions_.find(ies_publicKey) != this->auth_solutions_.end()){
@@ -231,27 +233,105 @@ void Blockchain::Start(){
         return true;
     });
 
+    this->dht_net_->SyncChannel([&](const std::vector<std::shared_ptr<dht::Value>>& data)->bool{
+        try{
+            auto jsonObj =  utils::msgPackToJson((const char*)data[0]->data.data(), data[0]->data.size());
+            if(!this->VerifyMessage(jsonObj)){
+                return true;
+            }
+
+            auto dsa_publicKey = jsonObj["dsapk"].get<string>();
+            auto ies_publicKey = jsonObj["iespk"].get<string>();
+
+            switch (jsonObj["type"].get<int>()){
+                case SYNC_TX: {
+                    //recieved request to sync w/ requester
+                    break;
+                }
+                case SYNC_RX: {
+                    break;
+
+                }
+            }
+
+
+        }catch(std::exception& e){
+            this->mlogger_->Error(e.what());
+        }
+        return true;
+    });
 
     this->running_ = true;
     
 }
 
+void Blockchain::SyncWorker(){
+    this->mlogger_->Info("Started Sync Worker");
+    while(this->sync_worker_active_){
+        std::string transaction;
+        this->sync_transaction_mem_q_.wait_dequeue(transaction);
+        nlohmann::json parsed = nlohmann::json::parse(transaction);
+        auto origin_iespk = parsed["iespk"].get<std::string>();
+
+        parsed.erase("iespk");
+        transaction = parsed.dump();
+
+        //add iespk txs to storage
+        this->sync_tx_votes_[origin_iespk].push_back(transaction);
+
+        //check if sync_tx_votes >= 2/3 network
+        if(this->sync_tx_votes_.size() >=  (0.6667 * static_cast<float>(this->authenticated_nodes_ies_.size()))){
+            //TODO
+            //prevent the creation of new blocks
+
+            std::unordered_map<std::string,bool > selected_tx_hashes;
+            std::vector<nlohmann::json> selected_txs;
+
+            //consolidate all transactions
+            for(auto& txs: this->sync_tx_votes_){
+                for(auto& tx: txs.second) {
+                    auto hash = this->identity_->ComputeHash(tx);
+                    if (selected_tx_hashes.find(hash) == selected_tx_hashes.end()) {
+                        selected_tx_hashes[hash] = true;
+                        selected_txs.push_back(nlohmann::json::parse(tx));
+                    }
+                }
+            }
+
+            //sort transactions by timestamp
+            std::sort(selected_txs.begin(),selected_txs.end(),[=](nlohmann::json& a,nlohmann::json& b)->bool{
+               return a["timestamp"].get<long>() < b["timestamp"].get<long>();
+            });
+
+            //re-add transactions to verified queue.
+
+            //erase all sync votes
+
+        }
+    }
+}
 
 void Blockchain::VerificationWorker() {
     this->mlogger_->Info("Started Verification Worker.");
 
     while(this->verifier_active_) {
+
+        //if block_reorg consolidation is happening prevent block creation
+        std::lock_guard<std::mutex> lck(this->block_reorg_);
+
         std::string transaction;
         this->transaction_mem_q_.wait_dequeue(transaction);
 
         nlohmann::json parsed = nlohmann::json::parse(transaction);
-        std::string origin_iespk = parsed["iespk"].get<std::string>();
+        auto origin_iespk = parsed["iespk"].get<std::string>();
 
         parsed.erase("iespk");
         transaction = parsed.dump();
         auto tx_hash = this->identity_->ComputeHash(transaction);
 
-
+        if(!NewTX(tx_hash)){
+            continue;
+        }
         //check if transaction vote already exists exists
         if(this->transaction_votes_.find(tx_hash) != this->transaction_votes_.end()){
             bool exit = false;
@@ -270,16 +350,12 @@ void Blockchain::VerificationWorker() {
         //store tx in mempool
         {
             std::lock_guard<std::mutex> lck(this->mutex);
+            if(transaction.empty()){
+                this->mlogger_->Error("EMPTY TX DETAILS! ",parsed);
+            }
             this->transaction_mempool_[tx_hash] = transaction;
         }
 
-        //check if tx_timestamp < current block timestamp
-        //TODO: maybe use NewTX
-        if(!this->block_chain_.empty()) {
-            if (parsed["timestamp"].get<long>() < this->block_chain_.back().timestamp) {
-                continue;
-            }
-        }
 
 
         //add transaction vote
@@ -307,57 +383,84 @@ void Blockchain::VerificationWorker() {
         for(auto& node: this->authenticated_nodes_ies_){
             tx_broadcast(node.first);
         }
-
-
     }
 }
 
 void Blockchain::BlockWorker() {
-    std::vector<string> tx_pool;
     while(this->block_worker_active_) {
-        std::string transaction;
-        this->verified_transaction_q_.wait_dequeue(transaction);
 
-        tx_pool.push_back(transaction);
+        std::string transaction_hash;
+        this->verified_transaction_q_.wait_dequeue(transaction_hash);
 
-        if(tx_pool.size() >= BLOCK_MAX){
+//        auto transaction = this->transaction_mempool_[transaction_hash];
+        this->verified_tx_hash_mempool_.push_back(transaction_hash);
 
-            sort(tx_pool.begin(), tx_pool.end(), [=](std::string &a, std::string &b) -> bool {
-                nlohmann::json data1, data2;
-                data1 = nlohmann::json::parse(a);
-                data2 = nlohmann::json::parse(b);
+        bool sorted = false;
 
-                return data1["timestamp"] < data2["timestamp"];
-            });
-            //create block
-            auto block = this->CreateBlock(tx_pool);
-
-
-            //If the proposed block queue has an item
-            //correct the block height and block header
-            if(this->proposed_blocks_.peek() != nullptr){
-                this->proposed_blocks_size_++;
-                block.height = this->proposed_blocks_size_;
-                block.block_header = this->identity_->ComputeHash(block.merkle_root+std::to_string(block.height));
-            }else{
-                this->proposed_blocks_size_=block.height;
-            }
-            //add block to proposed queue
-            this->proposed_blocks_.try_enqueue(block);
-
-
-            //increase block consensus vote
-            this->block_votes_[block.height][block.block_header].push_back(this->identity_->IESPublicKey());
-
-            //broadcast block
-            this->BroadcastBlock(block);
-
-            tx_pool.clear();
+        if(!this->m_block_votes_.empty()){
+            continue;
         }
+
+
+        sort(this->verified_tx_hash_mempool_.begin(), this->verified_tx_hash_mempool_.end(),
+             [&](std::string &a, std::string &b) -> bool {
+                 nlohmann::json data1, data2;
+                 data1 = nlohmann::json::parse(this->transaction_mempool_[a]);
+                 data2 = nlohmann::json::parse(this->transaction_mempool_[b]);
+
+
+                 return data1["timestamp"] < data2["timestamp"];
+             });
+
+        auto first_tx = nlohmann::json::parse(this->transaction_mempool_[this->verified_tx_hash_mempool_.front()]);
+        auto last_tx = nlohmann::json::parse(this->transaction_mempool_[this->verified_tx_hash_mempool_.back()]);
+
+        if((last_tx["timestamp"].get<long>() - first_tx["timestamp"].get<long>()) < 60000){
+            continue;
+        }
+        this->mlogger_->Debug("BLOCK_TIME elapsed,creating block");
+
+        long first = first_tx["timestamp"];
+        std::vector<std::string> selected;
+        for(auto it = this->verified_tx_hash_mempool_.begin();it != this->verified_tx_hash_mempool_.end();++it){
+            auto obj = nlohmann::json::parse(this->transaction_mempool_[*it]);
+
+            if((obj["timestamp"].get<long>() - first) <=60000){
+                selected.push_back(*it);
+                this->verified_tx_hash_mempool_.erase(it);
+                it--;
+            }
+
+        }
+        auto block = this->CreateBlock(selected,-1);
+
+        //add block to proposed memqueue
+        this->proposed_block_mempool_[block.block_header] = block;
+
+        //increase block consensus vote
+        this->block_votes_[block.height][block.block_header].push_back(this->identity_->IESPublicKey());
+        this->m_block_votes_[block.height] = block.block_header;
+
+        //add block to broadcast queue
+        this->broadcast_blocks_.try_enqueue(block.block_header);
 
     }
 }
 
+void Blockchain::ProposedBlockReOrg(long timestamp){
+    this->mlogger_->Debug("Removing older timestamps!");
+
+    for(auto it = this->verified_tx_hash_mempool_.begin(); it != this->verified_tx_hash_mempool_.end();++it){
+        auto transaction = nlohmann::json::parse(this->transaction_mempool_[*it]);
+
+        if(transaction["timestamp"].get<long>() < timestamp){
+            this->mlogger_->Error("Erasing TX: ",*it);
+            this->verified_tx_hash_mempool_.erase(it);
+            it--;
+        }
+    }
+
+}
 
 //all clean-up of containers is performed
 void Blockchain::RXBlockWorker() {
@@ -365,7 +468,15 @@ void Blockchain::RXBlockWorker() {
         Block b;
         this->received_blocks_.wait_dequeue(b);
 
-        if(b.merkle_root == "" || b.tx_hashes.empty()){
+        //if height <= chain height, discard
+        if(!this->block_chain_.empty()) {
+            if (b.height <= this->block_chain_.back().height) {
+                this->mlogger_->Debug("Received Lagging Block -- Discarding");
+                continue;
+            }
+        }
+
+        if(b.merkle_root.empty() || b.tx_hashes.empty()){
             this->mlogger_->Error("Empty data from: ",b.iespk);
             continue;
         }
@@ -379,47 +490,131 @@ void Blockchain::RXBlockWorker() {
 
         {
             std::lock_guard<std::mutex> lck(this->mutex);
+            //TODO: check if iespk is switching votes
             this->block_votes_[b.height][b.block_header].push_back(b.iespk);
             this->proposed_block_mempool_[b.block_header] = b;
         }
 
-        //trigger to check votes
-        //get current block height
-        auto block = this->proposed_blocks_.peek();
-        if (block == nullptr) {
-            //haven't formed block at that height yet
-            //TODO
+        this->Consensus();
+
+    }
+
+
+}
+
+void Blockchain::Consensus(){
+    //get last height
+    int height = 0;
+    if(!this->block_chain_.empty()) {
+        height = this->block_chain_.back().height + 1;
+    }
+    while((this->block_votes_.find(height) != this->block_votes_.end()) || this->block_chain_.empty()){
+        if(this->block_chain_.empty()){
+            if(height > 0){
+                break;
+            }
+        }
+        int tmp = height;
+        height++;
+        if(this->block_votes_[tmp].empty()){
+            //erase
+            this->block_votes_.erase(height);
             continue;
         }
 
         int votes = 0;
         std::string header;
-        for (auto & it : this->block_votes_[block->height]) {
+        for (auto & it : this->block_votes_[tmp]) {
             if(it.second.size() >= votes){
                 votes =  it.second.size();
                 header = it.first;
             }
         }
+
         if ( votes >= (0.6667 * static_cast<float>(this->authenticated_nodes_ies_.size()))) {
+            //get our vote at that height
+            std::string m_vote = this->m_block_votes_[tmp];
+
             //2/3 votes achieved
             //add to chain
             this->AddToChain(this->proposed_block_mempool_[header]);
 
+            //if accepted header was not our vote or we haven't voted yet
+            if(m_vote != header){
+                //reorganize blocks
+                this->ProposedBlockReOrg(this->block_chain_.back().timestamp);
+                this->proposed_block_mempool_.erase(m_vote);
+            }
+
             {
                 std::lock_guard<std::mutex> lck(this->mutex);
-                this->block_votes_.erase(block->height);
+                this->block_votes_.erase(tmp);
+                this->m_block_votes_.erase(tmp);
                 this->proposed_block_mempool_.erase(header);
+
             }
-            this->proposed_blocks_.pop();
+        }else{
+            //2/3 majority not yet achieved
+            //check if no. of headers > 2/3 of authenticated nodes
+            if(this->block_votes_[tmp].size() >= (0.6667 * static_cast<float>(this->authenticated_nodes_ies_.size()))){
+                this->mlogger_->Error("NETWORK DEADLOCK DETECTED!!");
+                //get all transactions from diff. votes
+                std::unordered_map<std::string,bool> transaction_map;
+                std::vector<std::string> transactions;
+                std::vector<std::string> transaction_hashes;
+                std::for_each(this->block_votes_[tmp].begin(),this->block_votes_[tmp].end(),
+                              [&](const std::unordered_map<std::string,std::vector<std::string>>::value_type& vote){
+                                  Block b = this->proposed_block_mempool_[vote.first];
+
+                                  for(auto& tx: b.txs){
+                                      if(transaction_map.find(tx.first) == transaction_map.end()){
+                                          transactions.push_back(tx.second);
+                                          transaction_map[tx.first] = true;
+                                      }
+                                  }
+
+                              });
+                this->mlogger_->Debug("Consolidated Size: ",transactions.size());
+
+                //reform only the deadlocked block
+                std::sort(transactions.begin(),transactions.end(),[&](std::string& a,std::string& b){
+                    auto parsed_a = nlohmann::json::parse(a);
+                    auto parsed_b = nlohmann::json::parse(b);
+
+                    return parsed_a["timestamp"] < parsed_b["timestamp"];
+                });
+
+                std::transform(transactions.begin(),transactions.end(),transaction_hashes.begin(),[&](std::string& tx) -> std::string{
+                    return this->identity_->ComputeHash(tx);
+                });
+
+                Block b = this->CreateBlock(transaction_hashes,-1);
+
+                //remove previous vote
+                std::for_each(this->block_votes_[b.height].begin(),this->block_votes_[b.height].end(),[&](const std::unordered_map<std::string,std::vector<std::string>>::value_type& vote){
+                    for(auto it = vote.second.begin();it != vote.second.end();++it){
+                        if(*it == this->identity_->IESPublicKey()){
+                            this->proposed_block_mempool_.erase(b.block_header);
+                            this->block_votes_[b.height][vote.first].erase(it);
+                            it--;
+                        }
+                    }
+                });
+
+                this->block_votes_[b.height][b.block_header].push_back(this->identity_->IESPublicKey());
+                this->proposed_block_mempool_[b.block_header] = b;
+
+                this->broadcast_blocks_.try_enqueue(b.block_header);
 
 
-        }
+
+            }
+
     }
 
-
+    }
 }
 //
-//send auth challenge and expect response
 void Blockchain::AuthNode(const std::string& ies_pk){
     this->mlogger_->Info("Authenticated node: ",ies_pk);
     std::lock_guard<std::mutex> lck(this->mutex);
@@ -542,7 +737,7 @@ void Blockchain::DirectMessage(const std::string& dest_ies_pk,nlohmann::json dat
     payload["dsapk"] = this->identity_->DSAPublicKey();
 
     std::string dst = dest_ies_pk;
-    if(type == TX_BROADCAST || type == BX_BROADCAST){
+    if(type == TX_BROADCAST || type == BX_BROADCAST || type == SYNC_TX){
         dst = dst + std::to_string(type);
     }
 
@@ -606,43 +801,44 @@ void Blockchain::TransactionVote(const std::string& tx_hash,const std::string& t
     this->mlogger_->Debug(static_cast<float>(this->transaction_votes_[tx_hash].size()),"<----->",(0.66667 * static_cast<float>(this->authenticated_nodes_ies_.size())));
     if(static_cast<float>(this->transaction_votes_[tx_hash].size()) >= (0.66667 * static_cast<float>(this->authenticated_nodes_ies_.size()))){
         //tx consensus enough
-        this->verified_transaction_q_.try_enqueue(tx);
+        this->verified_transaction_q_.try_enqueue(tx_hash);
     }
 }
 
 
-Block Blockchain::CreateBlock(std::vector<std::string>& txs) {
+Block Blockchain::CreateBlock(std::vector<std::string>& txs,int init_height) {
     Block block;
+    std::string last_tx;
     for (const auto &tx: txs) {
-        auto hash = this->identity_->ComputeHash(tx);
-        block.tx_hashes.push_back(hash);
-        block.txs[hash] = tx;
+        block.tx_hashes.push_back(tx);
+        block.txs[tx] = this->transaction_mempool_[tx];
+        last_tx = tx;
     }
 
     //compute merkle tree
     auto tree = MerkleNode::MerkleTree(block.tx_hashes);
 
-    if (this->block_chain_.empty()) {
-        block.height = 0;
-    } else {
-        block.height = this->block_chain_.back().height + 1;
+    if(init_height<0) {
+        if (this->block_chain_.empty()) {
+            block.height = 0;
+        } else {
+            block.height = this->block_chain_.back().height + 1;
+        }
     }
+
     block.merkle_root = tree->Hash();
+
+    //set block header to the sha256(merkle_root+height)
     block.block_header = this->identity_->ComputeHash(block.merkle_root+std::to_string(block.height));
 
-    return block;
+    //set timestamp to last transaction in the block
+    block.timestamp = nlohmann::json::parse(this->transaction_mempool_[last_tx])["timestamp"].get<long>();
 
+    return block;
 }
 
 
 void Blockchain::AddToChain(Block block){
-    using namespace std::chrono;
-    milliseconds ms = duration_cast< milliseconds >(
-            system_clock::now().time_since_epoch()
-    );
-    std::lock_guard<std::mutex> lck(this->mutex);
-
-    block.timestamp = ms.count();
     //fill in missing transactions
     for(auto& tx: block.tx_hashes){
         if(this->transaction_mempool_.find(tx) == this->transaction_mempool_.end()){
@@ -667,22 +863,33 @@ void Blockchain::AddToChain(Block block){
     this->block_chain_.push_back(block);
 }
 
-void Blockchain::BroadcastBlock(Block& block){
-    //broadcast latest block
-    nlohmann::json  data,tmp;
-    block.to_json(tmp,block);
+void Blockchain::BXBlockWorker(){
 
-    data["data"] = tmp;
+    while(this->block_worker_active_){
 
-    for(const auto& node: authenticated_nodes_ies_){
-        this->DirectMessage(node.first,data,BX_BROADCAST,[&](bool){
+        std::string block_header;
+        this->broadcast_blocks_.wait_dequeue(block_header);
 
-        });
+        auto block = this->proposed_block_mempool_[block_header];
+
+        //broadcast latest block
+        nlohmann::json  data,tmp;
+        block.to_json(tmp,block);
+
+        data["data"] = tmp;
+
+        for(const auto& node: authenticated_nodes_ies_){
+            this->DirectMessage(node.first,data,BX_BROADCAST,[&](bool){
+
+            });
+        }
+        this->mlogger_->Debug("Block broadcasted");
     }
-    this->mlogger_->Debug("Block broadcasted");
+
 }
 
 bool Blockchain::NewTX(std::string hash){
+
 
     //check blocks from latest
     for(std::vector<Block>::const_reverse_iterator i = this->block_chain_.rbegin(); i != this->block_chain_.rend(); ++i ){

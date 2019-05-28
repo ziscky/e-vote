@@ -7,6 +7,10 @@
 #define AUTH_CHALLENGE 3
 #define AUTH_SOLUTION 4
 #define BX_UPDATE 5
+
+#define SYNC_TX 10
+#define SYNC_RX 11
+
 #define BLOCK_MAX 3
 
 
@@ -65,22 +69,26 @@ class Blockchain{
         //!!!the block chain!!!
         std::vector<Block> block_chain_;
 
-        //stores proposed created blocks
-        moodycamel::ReaderWriterQueue<Block> proposed_blocks_;
-        int proposed_blocks_size_;
-
+        //stores all blocks received from the network
         moodycamel::BlockingReaderWriterQueue<Block> received_blocks_;
+
+        //stores all blocks ready to be broadcasted to the network
+        moodycamel::BlockingReaderWriterQueue<std::string> broadcast_blocks_;
+        std::mutex block_in_contention_;
+
         //stores votes for the block header to place at particular height
         //height : block_header: [node pks supporting header ....]
         std::map<int,std::unordered_map<string,std::vector<string>>> block_votes_;
+        std::map<int,std::string> m_block_votes_;
 
         //all received proposed blocks are stored here
+        //our block keys are tagged:  -header
         std::unordered_map<std::string,Block> proposed_block_mempool_;
 
         bool NewBX(std::string,long);
-        void BroadcastBlock(Block& block);
+
         void RequestBlocks(const std::string&);
-        Block CreateBlock(std::vector<string>&);
+        Block CreateBlock(std::vector<string>&,int);
         bool VerifyBlock(std::vector<std::string> tx_hashes,const std::string& merkle_root,const std::string& block_header,int height);
 
         std::vector<Block> GetBlocks(const std::string& from,const std::string& to);
@@ -88,11 +96,15 @@ class Blockchain{
         std::vector<std::string> GetBlocksJSON(const std::string& from,const std::string& to);
 
         void AddToChain(Block);
+        void Consensus();
+        void ProposedBlockReOrg(long timestamp);
+        std::mutex block_reorg_;
 
-        std::thread block_worker_,rx_block_worker_;
+        std::thread block_worker_,rx_block_worker_,bx_block_worker_;
         bool block_worker_active_;
         void BlockWorker();
         void RXBlockWorker();
+        void BXBlockWorker();
         //////////////////////////////////////////////////////////////////////////////////////////
 
 
@@ -101,24 +113,32 @@ class Blockchain{
         std::unordered_map<string,std::vector<std::string>> transaction_votes_;
         std::unordered_map<string,std::unordered_map<std::string,bool>> sent_votes_;
 
+        //stores a map of node_pk: [txs...]
+        std::unordered_map<string,std::vector<std::string>> sync_tx_votes_;
+
         //stores a map of transactionhash : {transaction data} that have passed concensus
         std::unordered_map<string,string> transaction_mempool_;
-
+        std::vector<string> verified_tx_hash_mempool_;
         //queue of verified txs waiting to be added to the chain
         moodycamel::BlockingReaderWriterQueue<string> verified_transaction_q_;
 
         //stores transactions coming in from the network
-        moodycamel::BlockingReaderWriterQueue<string> transaction_mem_q_
+        moodycamel::BlockingReaderWriterQueue<string> transaction_mem_q_;
 
-        ;
+        //stores sync transactions from the network for later processing
+        moodycamel::BlockingReaderWriterQueue<string> sync_transaction_mem_q_;
 
         void TransactionVote(const std::string& tx_hash,const std::string& tx,const std::string& pk);
         bool NewTX(std::string);
 
         std::thread verification_worker_;
+        std::thread sync_worker_;
+
         bool verifier_active_;
         void VerificationWorker();
 
+        bool sync_worker_active_;
+        void SyncWorker();
         void CreateTransaction();
         //////////////////////////////////////////////////////////////////////////////////////////
 
@@ -164,20 +184,17 @@ class Blockchain{
             mlogger_ = logger;
             dht_net_ = std::make_unique<DHTNode>(dht_conf,cond,logger);
             identity_ = id;
-            proposed_blocks_size_ = 0;
-
         };
         ~Blockchain()= default;
         std::unique_ptr<DHTNode> dht_net_;
-        void Start();
         std::string DHTRoutingTable();
+        void Start();
         void DHTNodes();
         void AddKnownNodes(const std::string& path);
         bool IsRunning();
         void BroadcastTransaction();
         void PrintTX();
         void PrintBlocks();
-
         void PrintNodes();
 };
 

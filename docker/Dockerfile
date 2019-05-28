@@ -1,7 +1,8 @@
-FROM ubuntu:16.04
+FROM ubuntu:latest
 MAINTAINER Eric Mokaya <emagemvee@gmail.com>
 RUN apt-get update \
-    && apt-get install -y build-essential cmake git wget libncurses5-dev libreadline-dev nettle-dev libgnutls28-dev libuv1-dev  cython3 python3-dev libcppunit-dev libjsoncpp-dev libasio-dev libssl-dev python3-setuptools libcrypto++-dev libcrypto++9: && apt-get clean
+    && apt-get install -y build-essential cmake git wget libncurses5-dev libreadline-dev nettle-dev libgnutls28-dev libuv1-dev  cython3 python3-dev libcppunit-dev libjsoncpp-dev libasio-dev libssl-dev libstdc++6 python3-setuptools \
+    && apt-get clean
 
 RUN wget https://github.com/msgpack/msgpack-c/releases/download/cpp-2.1.5/msgpack-2.1.5.tar.gz \
 	&& tar -xzf msgpack-2.1.5.tar.gz \
@@ -10,6 +11,8 @@ RUN wget https://github.com/msgpack/msgpack-c/releases/download/cpp-2.1.5/msgpac
 	&& make -j8 && make install \
     && cd ../.. && rm -rf msgpack-2.1.5 msgpack-2.1.5.tar.gz
 
+RUN git clone https://github.com/weidai11/cryptopp.git \
+    && cd cryptopp && make && make install
 
 RUN git clone https://github.com/ziscky/opendht.git \
 	&& cd opendht && git checkout -b "nopackettimeout" \
@@ -18,8 +21,10 @@ RUN git clone https://github.com/ziscky/opendht.git \
     && cd ../.. && rm -rf opendht
 
 RUN git clone https://github.com/ziscky/e-vote \
-    && cd e-vote && mkdir build \
-    && cmake --build build --target install -- -j 4 \
+    && cd e-vote && mkdir build && cd build \
+    && cmake -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_COMPILER=/usr/bin/g++ .. \
+    && cd /e-vote/ \
+    && cmake --build build --target install -- -j 4
 
 WORKDIR /e-vote/
 COPY nodes.json nodes.json

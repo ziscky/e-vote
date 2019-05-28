@@ -54,6 +54,8 @@ class DHTNode{
         std::string announce_channel_;
         std::string tx_channel_;
         std::string block_channel_;
+        std::string sync_channel_;
+
         DHTNode(NodeConf conf,std::shared_ptr<std::condition_variable> c,std::shared_ptr<Logger> logger):cond_(c),mlogger_(logger){
             tx_channel_ = conf.tx_channel;
             internal_channel_ = conf.internal_channel;
@@ -65,7 +67,6 @@ class DHTNode{
             node_id_ = conf.node_id;
             port_ = conf.port;
         }
-
         ~DHTNode(){};
 
         DHTNode(const DHTNode& old){
@@ -96,6 +97,7 @@ class DHTNode{
         //starts a thread that listens for messages on h(node_id_)
         //for authentication,direct messages etc...
         void InternalChannel(std::function<bool(const std::vector<std::shared_ptr<dht::Value>>&)>);
+        void SyncChannel(std::function<bool(const std::vector<std::shared_ptr<dht::Value>>&)>);
         
         
         std::string RoutingTable();
