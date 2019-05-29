@@ -10,6 +10,7 @@
 
 #define SYNC_TX 10
 #define SYNC_RX 11
+#define BX_VOTE_RQ 12
 
 #define BLOCK_MAX 3
 
@@ -97,7 +98,8 @@ class Blockchain{
 
         void AddToChain(Block);
         void Consensus();
-        void ProposedBlockReOrg(long timestamp);
+        void TransactionPurge(long timestamp);
+        void BlockVote(const Block& b,std::string iespk);
         std::mutex block_reorg_;
 
         std::thread block_worker_,rx_block_worker_,bx_block_worker_;
