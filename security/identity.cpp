@@ -119,7 +119,7 @@ std::string Identity::EncryptData(const std::string& plain){
     CryptoPP::StringSource src(plain,true,new CryptoPP::PK_EncryptorFilter(prng,this->keypair_->e_public_key,new CryptoPP::StringSink(cipher)));
     
     //create hex encoder
-    CryptoPP::HexEncoder encoder(new CryptoPP::StringSink(cipher_encoded));
+    CryptoPP::Base64Encoder encoder(new CryptoPP::StringSink(cipher_encoded));
     CryptoPP::ChannelSwitch cs;
     cs.AddDefaultRoute(encoder);
 

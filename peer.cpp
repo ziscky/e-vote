@@ -39,7 +39,7 @@ int main(int argc,char **argv){
             out.close();
             return 0;
         }
-        if(argc<3){
+        if(argc<4){
             std::cerr<<"Provide path to keyfile"<<std::endl;
             return -1;
         }
@@ -64,7 +64,7 @@ int main(int argc,char **argv){
     std::shared_ptr<Identity> id = std::make_shared<Identity>(argv[2]);
     
     std::unique_ptr<Blockchain> blockchain = std::make_unique<Blockchain>(conf,id,logger);
-    blockchain->AddKnownNodes("nodes.json");
+    blockchain->AddKnownNodes(argv[3]);
     // auto b = new Blockchain(conf,logger);
 
     asciiPrint();

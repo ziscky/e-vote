@@ -10,19 +10,23 @@ RUN apt-get update \
 	&& cmake -DMSGPACK_CXX11=ON -DMSGPACK_BUILD_EXAMPLES=OFF -DCMAKE_INSTALL_PREFIX=/usr ..\
 	&& make -j8 && make install\
     && cd ../.. && rm -rf msgpack-2.1.5 msgpack-2.1.5.tar.gz\
+    && cd /\
 
     && git clone https://github.com/msgpack/msgpack-c.git\
     && cd msgpack-c && cmake -DMSGPACK_CXX17=ON .\
     && make install\
+    && cd /\
 
     && git clone https://github.com/weidai11/cryptopp.git\
-    && cd cryptopp && make && make install\
+    && cd cryptopp && make libcryptopp.so && make install\
+    && cd /\
 
     && git clone https://github.com/ziscky/opendht.git\
 	&& cd opendht && git checkout -b "nopackettimeout"\
 	&& mkdir build && cd build\
 	&& cmake .. -DCMAKE_INSTALL_PREFIX=/usr -DOPENDHT_PYTHON=Off -DOPENDHT_LTO=On && make -j8 && make install\
     && cd ../.. && rm -rf opendht\
+    && cd /\
 
     && git clone https://github.com/ziscky/e-vote\
     && mkdir configs && cd e-vote && mkdir build && cd build\
