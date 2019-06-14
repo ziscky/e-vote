@@ -98,15 +98,19 @@ class DHTNode{
         //for authentication,direct messages etc...
         void InternalChannel(std::function<bool(const std::vector<std::shared_ptr<dht::Value>>&)>);
         void SyncChannel(std::function<bool(const std::vector<std::shared_ptr<dht::Value>>&)>);
+
+        //
+        void ForkChannel(std::function<bool(const std::vector<std::shared_ptr<dht::Value>>&)>);
+        void BXRQChannel(std::function<bool(const std::vector<std::shared_ptr<dht::Value>>&)>);
+        void ForkSyncChannel(std::function<bool(const std::vector<std::shared_ptr<dht::Value>>&)>);
+        void ForkResolutionChannel(std::function<bool(const std::vector<std::shared_ptr<dht::Value>>&)>);
+        void ChainInitChannel(std::function<bool(const std::vector<std::shared_ptr<dht::Value>>&)>);
+        void ChainCloseChannel(std::function<bool(const std::vector<std::shared_ptr<dht::Value>>&)>);
+
         
         
         std::string RoutingTable();
         void NodeStats();
-        
-
-        
-
-
 
 };
 

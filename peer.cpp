@@ -40,7 +40,7 @@ int main(int argc,char **argv){
             return 0;
         }
         if(argc<4){
-            std::cerr<<"Provide path to keyfile"<<std::endl;
+            std::cerr<<"./binary {conf} {identity} {nodes}"<<std::endl;
             return -1;
         }
         std::ifstream conf_file(argv[1]);

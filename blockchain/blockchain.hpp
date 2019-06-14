@@ -2,7 +2,6 @@
 #define BLOCKCHAIN_HPP
 
 #define TX_BROADCAST 0
-#define NODE_AUTH 1
 #define BX_BROADCAST 2
 #define AUTH_CHALLENGE 3
 #define AUTH_SOLUTION 4
@@ -162,6 +161,10 @@ class Blockchain{
         void AddChallenge(const std::string& ies_pk,const std::string& solution);
         ///////////////////////////////////////////////////////////////////////////////////////////
 
+
+        ///////////////////// FORKING ///////////////////////////////////////////
+        //stores fork_hash: [pks...]
+        std::unordered_map<std::string,std::vector<std::string>> fork_votes_;
 
         //stores a map of node_id_ : int
         //total votes for each known node

@@ -45,7 +45,6 @@ void Blockchain::Start(){
     this->sync_worker_  = std::thread(&Blockchain::SyncWorker,this);
 
 
-
     this->dht_net_->AnnounceChannel([&](const std::vector<std::shared_ptr<dht::Value>>& data)->bool{
         auto jsonObj =  utils::msgPackToJson((const char*)data[0]->data.data(), data[0]->data.size());
         if(!utils::checkParams(jsonObj,{"dsapk","iespk"}))
@@ -154,6 +153,58 @@ void Blockchain::Start(){
         }
         return true;
     });
+
+    this->dht_net_->ForkChannel([&](const std::vector<std::shared_ptr<dht::Value>>& data)->bool{
+        //stop creation of blocks
+        //compute sha256(blockheaders...) = fork_hash
+        //broadcast fork_hash to all auth_nodes
+
+    });
+
+    this->dht_net_->ForkSyncChannel([&](const std::vector<std::shared_ptr<dht::Value>>& data)->bool{
+        //receive fork_hash from node
+        //store vote
+        //check if any fork_hash has votes >= 2/3 of authenticated nodesw
+        //if true:
+        ////// stop creation of blocks and processing of transactions
+        ////// sign the stored blockcahin --> include timestamp of closing time --> death block (hash of the forking time)
+        //if false:
+        ///consensus not reached but total votes <2/3 of network
+        //continue
+        ///consensus not reached and total votes >= 2/3 of networkb
+        /////network is deadlocked
+        /////resolution:
+        //////// broadcast last height to ForkResolutionChannel
+    });
+
+    this->dht_net_->ForkResolutionChannel([&](const std::vector<std::shared_ptr<dht::Value>>& data)->bool{}{
+        ///receive last height from a particular node + any advanced height
+        ///update block chain ( with block verification )
+        //retransmit the fork_hash to Forksync channel
+    });
+
+    this->dht_net_->ChainInitChannel([&](const std::vector<std::shared_ptr<dht::Value>>& data)->bool{
+        //receive the genesis block
+        //perform consensus as normal
+
+    });
+
+    this->dht_net_->ChainCloseChannel([&](const std::vector<std::shared_ptr<dht::Value>>& data)->bool{
+        //receive the genesis block
+        //perform consensus as normal
+        //TODO: -->Similar to forking mechanism
+    });
+
+
+
+
+    this->dht_net_->BXRQChannel([&](const std::vector<std::shared_ptr<dht::Value>>& data)->bool{
+        //receive types requests:
+        ////get at a particular height
+        //// get a range of heights
+        ////sepecify from parent or fork
+    });
+
     this->dht_net_->InternalChannel([&](const std::vector<std::shared_ptr<dht::Value>>& data)->bool{
         try{
 
@@ -343,8 +394,13 @@ void Blockchain::SyncWorker(){
 
 void Blockchain::VerificationWorker() {
     this->mlogger_->Info("Started Verification Worker.");
+    //TODO: check if genesis block indicates current chain is a fork
+    // verification includes checking whether keys are valid in the parent blockchain
+    ////// -> load the block chain from disk
+    ////// -> verify keys
 
     while(this->verifier_active_) {
+
 
         //if block_reorg consolidation is happening prevent block creation
         std::lock_guard<std::mutex> lck(this->block_reorg_);
@@ -552,6 +608,7 @@ void Blockchain::RXBlockWorker() {
 }
 
 void Blockchain::Consensus(){
+
     //get last height
     int height = 0;
     if(!this->block_chain_.empty()) {
