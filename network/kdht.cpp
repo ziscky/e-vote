@@ -26,8 +26,8 @@ bool DHTNode::Start(){
         //Try to connect to node reachable via public address
         //Force bootstrap to evote mainnet/testnet
         this->mlogger_->Debug("No public address detected. Confifure router port forwarding and rerun with {-portforward}");
-        this->mlogger_->Info("Bootstrapping to evote ",(_mainnet_?"mainnet":"testnet")," at",(_mainnet_?mainnet_:testnet_));
-        node_.bootstrap((_mainnet_?mainnet_:testnet_),std::to_string(this->port_));
+        this->mlogger_->Info("Bootstrapping to evote ",(_mainnet_?"mainnet":"testnet")," at ",(_mainnet_?mainnet_:testnet_));
+        node_.bootstrap((_mainnet_?mainnet_:testnet_),this->bootstrap_port_);
 
         //if fail,(network is dead)
     }else{
@@ -79,17 +79,17 @@ void DHTNode::AnnounceChannel(std::function<bool(const std::vector<std::shared_p
     }
 }
 
-void DHTNode::SyncChannel(std::function<bool(const std::vector<std::shared_ptr<dht::Value>>&)> cb){
+void DHTNode::BXRQChannel(std::function<bool(const std::vector<std::shared_ptr<dht::Value>>&)> cb){
     try{
-        this->node_.listen(dht::InfoHash::get(sync_channel_),cb);
+        this->node_.listen(dht::InfoHash::get(bxrq_channel_),cb);
     }catch(const exception& e){
         this->mlogger_->Error(e.what());
     }
 }
 
-void DHTNode::BXRQChannel(std::function<bool(const std::vector<std::shared_ptr<dht::Value>>&)> cb){
+void DHTNode::BXRXChannel(std::function<bool(const std::vector<std::shared_ptr<dht::Value>>&)> cb){
     try{
-        this->node_.listen(dht::InfoHash::get(sync_channel_),cb);
+        this->node_.listen(dht::InfoHash::get(bxrx_channel_),cb);
     }catch(const exception& e){
         this->mlogger_->Error(e.what());
     }
@@ -97,32 +97,23 @@ void DHTNode::BXRQChannel(std::function<bool(const std::vector<std::shared_ptr<d
 
 void DHTNode::ForkChannel(std::function<bool(const std::vector<std::shared_ptr<dht::Value>>&)> cb){
     try{
-        this->node_.listen(dht::InfoHash::get(sync_channel_),cb);
+        this->node_.listen(dht::InfoHash::get(fork_channel_),cb);
     }catch(const exception& e){
         this->mlogger_->Error(e.what());
     }
 }
 
-void DHTNode::ForkSyncChannel(std::function<bool(const std::vector<std::shared_ptr<dht::Value>>&)> cb){
-    try{
-        this->node_.listen(dht::InfoHash::get(sync_channel_),cb);
-    }catch(const exception& e){
-        this->mlogger_->Error(e.what());
-    }
-}
-
-
-void DHTNode::ForkResolutionChannel(std::function<bool(const std::vector<std::shared_ptr<dht::Value>>&)> cb){
-    try{
-        this->node_.listen(dht::InfoHash::get(sync_channel_),cb);
-    }catch(const exception& e){
-        this->mlogger_->Error(e.what());
-    }
-}
 //
 void DHTNode::ChainInitChannel(std::function<bool(const std::vector<std::shared_ptr<dht::Value>>&)> cb){
     try{
-        this->node_.listen(dht::InfoHash::get(sync_channel_),cb);
+        this->node_.listen(dht::InfoHash::get(init_channel_),cb);
+    }catch(const exception& e){
+        this->mlogger_->Error(e.what());
+    }
+}
+void DHTNode::ChainCloseChannel(std::function<bool(const std::vector<std::shared_ptr<dht::Value>>&)> cb){
+    try{
+        this->node_.listen(dht::InfoHash::get(close_channel_),cb);
     }catch(const exception& e){
         this->mlogger_->Error(e.what());
     }

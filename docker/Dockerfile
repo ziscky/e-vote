@@ -1,7 +1,7 @@
 FROM ubuntu:latest
-MAINTAINER Eric Mokaya <emagemvee@gmail.com>
+MAINTAINER Eric Mokaya <emagembe@gmail.com>
 RUN apt-get update \
-    && apt-get install -y build-essential cmake git wget libncurses5-dev libreadline-dev nettle-dev libgnutls28-dev libuv1-dev  cython3 python3-dev python2.7-dev libcppunit-dev libjsoncpp-dev libasio-dev libssl-dev libstdc++6 python3-setuptools \
+    && apt-get install -y build-essential cmake git wget libncurses5-dev libreadline-dev nettle-dev libgnutls28-dev libuv1-dev libcppunit-dev libjsoncpp-dev libasio-dev libssl-dev libstdc++6 \
     && apt-get clean\
 
     && wget https://github.com/msgpack/msgpack-c/releases/download/cpp-2.1.5/msgpack-2.1.5.tar.gz\
@@ -30,7 +30,7 @@ RUN apt-get update \
 
     && git clone https://github.com/ziscky/e-vote\
     && mkdir configs && cd e-vote && mkdir build && cd build\
-    && cmake -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_COMPILER=/usr/bin/g++ ..\
+    && cmake -DCMAKE_BUILD_TYPE=Debug -DPYTHON_EXTENSIONS=OFF -DCMAKE_CXX_COMPILER=/usr/bin/g++ ..\
     && cd /e-vote/\
     && cmake --build build --target install -- -j 4
 

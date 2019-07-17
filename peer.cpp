@@ -7,6 +7,7 @@
 #include <readline/readline.h>
 #include <readline/history.h>
 #include "blockchain/blockchain.hpp"
+#include "blockchain/litechain.h"
 
 void asciiPrint();
 void printHelp();
@@ -24,14 +25,12 @@ int main(int argc,char **argv){
         std::string arg = argv[1];
         if(arg == "generate"){
             json c;
-            c["DHT_INTERNAL"] = "";
-            c["DHT_VERIFIED"] = "";
-            c["DHT_UNVERIFIED"] = "";
-            c["DHT_ANNOUNCEMENT"] = "";
-            c["DHT_BLOCK"] = "";
+
             c["MAINNET"] = false;
             c["MAINNET_ADDR"] = "";
+            c["MAINNET_PORT"] = "";
             c["TESTNET_ADDR"] = "";
+            c["TESTNET_PORT"] = "";
             c["PORT"] = "";
             c["NODE_ID"] = "";
             std::ofstream out("conf.json");
@@ -47,14 +46,14 @@ int main(int argc,char **argv){
         json parsed;
         conf_file >> parsed;
 
-        conf.internal_channel = parsed["DHT_INTERNAL"];
+        conf.node_id = parsed["NODE_ID"];
         conf.main = parsed["MAINNET"];
         conf.mainnet_addr = parsed["MAINNET_ADDR"];
         conf.testnet_addr = parsed["TESTNET_ADDR"];
-        conf.announce_channel = parsed["DHT_ANNOUNCEMENT"];
-        conf.block_channel = parsed["DHT_BLOCK"];
         conf.port = parsed["PORT"];
-        conf.node_id = parsed["NODE_ID"];
+        conf.testnet_port = parsed["TESTNET_PORT"];
+        conf.mainnet_port = parsed["MAINNET_PORT"];
+
         
     }catch(const exception& e){
         std::cerr<<"Error reading config file:: "<<e.what()<<std::endl;
@@ -66,6 +65,9 @@ int main(int argc,char **argv){
     std::unique_ptr<Blockchain> blockchain = std::make_unique<Blockchain>(conf,id,logger);
     blockchain->AddKnownNodes(argv[3]);
     // auto b = new Blockchain(conf,logger);
+
+    std::unique_ptr<Litechain> lite = std::make_unique<Litechain>(argv[1],argv[2]);
+    lite->AddKnownNodes(argv[3]);
 
     asciiPrint();
     while(true){
@@ -79,6 +81,28 @@ int main(int argc,char **argv){
         if(line == "start"){
             logger->Debug("Starting blockchain");
             blockchain->Start();
+        }
+        if(line == "startlite"){
+            logger->Debug("Starting Litechain");
+            lite->Start();
+        }
+        if(line == "init"){
+            nlohmann::json obj;
+            std::ifstream conf_file("/home/emok/PycharmProjects/electionbackends/pubkey");
+
+            conf_file >> obj;
+
+            obj["timestamp"] = 124453622;
+            lite->InitChain(obj.dump());
+        }
+        if(line == "litetx"){
+            nlohmann::json obj;
+            obj["tx"] = "data...";
+            obj["timestamp"] = 122314241;
+            lite->BroadcastTX(obj.dump());
+        }
+        if(line == "getbx"){
+            std::cout<<lite->GetBlock(0,"PARENT")<<std::endl;
         }
         if(line == "h" || line == "help"){
             printHelp();

@@ -4,6 +4,7 @@
 
 #include <Python.h>
 #include <boost/python.hpp>
+#include <blockchain/litechain.h>
 #include "security/identity.hpp"
 #include <string>
 
@@ -21,4 +22,15 @@ BOOST_PYTHON_MODULE(evotepy){
             .def("Verify", static_cast<bool(Identity::*)(const std::string&,const std::string&,const std::string&)>(&Identity::VerifyData))
             .def("Encrypt", static_cast<std::string(Identity::*)(const std::string&,const std::string&)>(&Identity::EncryptData))
             .def("Encrypt", static_cast<std::string(Identity::*)(const std::string&)>(&Identity::EncryptData));
+
+    class_<Litechain,boost::noncopyable>("Litenode",init<const std::string&,const std::string&>())
+            .def("BroadcastTransaction",&Litechain::BroadcastTX)
+            .def("SeedKeys",&Litechain::SeedKeys)
+            .def("CloseChain",&Litechain::CloseChain)
+            .def("InitChain",&Litechain::InitChain)
+            .def("InitFork",&Litechain::InitFork)
+            .def("Start",&Litechain::Start)
+            .def("GetBlock",&Litechain::GetBlock)
+            .def("DHT",&Litechain::DHTRoutingTable)
+            .def("AddKnownNodes",&Litechain::AddKnownNodes);
 }

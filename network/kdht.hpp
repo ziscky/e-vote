@@ -20,10 +20,9 @@ struct NodeConf{
     std::string node_id;
     std::string mainnet_addr;
     std::string testnet_addr;
-    std::string internal_channel;
-    std::string announce_channel;
-    std::string block_channel;
-    std::string tx_channel;
+    std::string testnet_port;
+    std::string mainnet_port;
+
 };
 
 class DHTNode{
@@ -36,15 +35,12 @@ class DHTNode{
         std::shared_ptr<std::condition_variable> cond_;
         std::shared_ptr<Logger> mlogger_;
         std::mutex mmutex_;
-
         std::string mainnet_;
         std::string testnet_;
-        std::string unverified_channel_;
-        std::string verified_channel_;
-
         bool running_ = false; 
         bool bootstrap_ = false;
         bool _mainnet_ = false;
+        std::string bootstrap_port_;
 
         void Register();
         
@@ -55,25 +51,25 @@ class DHTNode{
         std::string tx_channel_;
         std::string block_channel_;
         std::string sync_channel_;
+        std::string fork_channel_;
+        std::string close_channel_;
+        std::string init_channel_;
+        std::string bxrq_channel_;
+        std::string bxrx_channel_;
 
-        DHTNode(NodeConf conf,std::shared_ptr<std::condition_variable> c,std::shared_ptr<Logger> logger):cond_(c),mlogger_(logger){
-            tx_channel_ = conf.tx_channel;
-            internal_channel_ = conf.internal_channel;
-            announce_channel_ = conf.announce_channel;
-            block_channel_ = conf.block_channel;
+
+        DHTNode(NodeConf conf,std::shared_ptr<Logger> logger):mlogger_(logger){
             mainnet_ = conf.mainnet_addr;
             testnet_ = conf.testnet_addr;
             _mainnet_ = conf.main;
             node_id_ = conf.node_id;
             port_ = conf.port;
+            bootstrap_port_ = (conf.main) ? conf.mainnet_port: conf.testnet_port;
         }
+        DHTNode(){};
         ~DHTNode(){};
 
         DHTNode(const DHTNode& old){
-            unverified_channel_ = old.unverified_channel_;
-            tx_channel_ = old.tx_channel_;
-            announce_channel_ = old.announce_channel_;
-            block_channel_ = old.block_channel_;
             mainnet_ = old.mainnet_;
             testnet_ = old.testnet_;
             _mainnet_ = old._mainnet_;
@@ -97,13 +93,11 @@ class DHTNode{
         //starts a thread that listens for messages on h(node_id_)
         //for authentication,direct messages etc...
         void InternalChannel(std::function<bool(const std::vector<std::shared_ptr<dht::Value>>&)>);
-        void SyncChannel(std::function<bool(const std::vector<std::shared_ptr<dht::Value>>&)>);
 
         //
         void ForkChannel(std::function<bool(const std::vector<std::shared_ptr<dht::Value>>&)>);
         void BXRQChannel(std::function<bool(const std::vector<std::shared_ptr<dht::Value>>&)>);
-        void ForkSyncChannel(std::function<bool(const std::vector<std::shared_ptr<dht::Value>>&)>);
-        void ForkResolutionChannel(std::function<bool(const std::vector<std::shared_ptr<dht::Value>>&)>);
+        void BXRXChannel(std::function<bool(const std::vector<std::shared_ptr<dht::Value>>&)>);
         void ChainInitChannel(std::function<bool(const std::vector<std::shared_ptr<dht::Value>>&)>);
         void ChainCloseChannel(std::function<bool(const std::vector<std::shared_ptr<dht::Value>>&)>);
 

@@ -23,26 +23,17 @@ void Blockchain::Start(){
     this->dht_net_->internal_channel_ = this->identity_->IESPublicKey();
     this->dht_net_->tx_channel_ = this->identity_->IESPublicKey()+std::to_string(TX_BROADCAST);
     this->dht_net_->block_channel_= this->identity_->IESPublicKey()+std::to_string(BX_BROADCAST);
-
+    this->dht_net_->fork_channel_ = this->identity_->IESPublicKey()+std::to_string(FORK_BROADCAST);
+    this->dht_net_->init_channel_ = this->identity_->IESPublicKey()+std::to_string(INIT_BROADCAST);
+    this->dht_net_->close_channel_ = this->identity_->IESPublicKey()+std::to_string(CLOSE_BROADCAST);
+    this->dht_net_->bxrq_channel_ = this->identity_->IESPublicKey()+std::to_string(BLOCK_RQ);
+    this->dht_net_->bxrx_channel_ = this->identity_->IESPublicKey()+std::to_string(BLOCK_RX);
     this->dht_net_->Start();
 
     //announce startup to known nodes
     this->Announce([&](bool success){});
-
-    //start VerificationWorker thread
-    this->verifier_active_ = true;
-    this->verification_worker_ = std::thread(&Blockchain::VerificationWorker,this);
-
-
-    //start block worker threads
-    this->block_worker_active_ = true;
-    this->block_worker_ = std::thread(&Blockchain::BlockWorker,this);
-    this->rx_block_worker_ = std::thread(&Blockchain::RXBlockWorker,this);
-    this->bx_block_worker_ = std::thread(&Blockchain::BXBlockWorker,this);
-
-    //start sync tx thread
-    this->sync_worker_active_ = true;
-    this->sync_worker_  = std::thread(&Blockchain::SyncWorker,this);
+    //TODO: if blocks exist on disk , start workers
+    //
 
 
     this->dht_net_->AnnounceChannel([&](const std::vector<std::shared_ptr<dht::Value>>& data)->bool{
@@ -63,7 +54,7 @@ void Blockchain::Start(){
 
         this->AddChallenge(ies_publicKey,"cipher");
 
-        this->DirectMessage(ies_publicKey,payload,AUTH_CHALLENGE,[&](bool success){
+        this->InternalMessage(ies_publicKey,payload,AUTH_CHALLENGE,[&](bool success){
             //success
             this->mlogger_->Debug("CHALLENGE SEND: ",success);
         });
@@ -91,7 +82,7 @@ void Blockchain::Start(){
 
             std::string plain = this->identity_->DecryptData(data);
             nlohmann::json parsed = nlohmann::json::parse(plain);
-//            this->mlogger_->Debug();
+            this->mlogger_->Debug(plain);
 
 
             if (!utils::checkParams(parsed, {"data", "signature", "pk"}))
@@ -107,8 +98,8 @@ void Blockchain::Start(){
             this->transaction_mem_q_.try_enqueue(parsed.dump());
 
 
-        }catch(std::exception e){
-
+        }catch(std::exception& e){
+            this->mlogger_->Error(e.what());
         }
         return true;
     });
@@ -158,41 +149,131 @@ void Blockchain::Start(){
         //stop creation of blocks
         //compute sha256(blockheaders...) = fork_hash
         //broadcast fork_hash to all auth_nodes
+        try {
+            auto jsonObj =  utils::msgPackToJson((const char*)data[0]->data.data(), data[0]->data.size());
+            if(!this->VerifyMessage(jsonObj)){
+                return true;
+            }
 
-    });
+            auto dsa_publicKey = jsonObj["dsapk"].get<string>();
+            auto ies_publicKey = jsonObj["iespk"].get<string>();
 
-    this->dht_net_->ForkSyncChannel([&](const std::vector<std::shared_ptr<dht::Value>>& data)->bool{
-        //receive fork_hash from node
-        //store vote
-        //check if any fork_hash has votes >= 2/3 of authenticated nodesw
-        //if true:
-        ////// stop creation of blocks and processing of transactions
-        ////// sign the stored blockcahin --> include timestamp of closing time --> death block (hash of the forking time)
-        //if false:
-        ///consensus not reached but total votes <2/3 of network
-        //continue
-        ///consensus not reached and total votes >= 2/3 of networkb
-        /////network is deadlocked
-        /////resolution:
-        //////// broadcast last height to ForkResolutionChannel
-    });
+            nlohmann::json payload,parsed;
 
-    this->dht_net_->ForkResolutionChannel([&](const std::vector<std::shared_ptr<dht::Value>>& data)->bool{}{
-        ///receive last height from a particular node + any advanced height
-        ///update block chain ( with block verification )
-        //retransmit the fork_hash to Forksync channel
+            Block b = this->block_chain_.back();
+            b.to_json(parsed,b);
+            this->ForkVote(b,this->identity_->IESPublicKey());
+
+            payload["data"] = parsed;
+            for(const auto& node: this->authenticated_nodes_ies_){
+                this->InternalMessage(node.first,payload,FORK_TX,[](bool){});
+            }
+
+        }catch(std::exception e){
+
+        }
+        return true;
     });
 
     this->dht_net_->ChainInitChannel([&](const std::vector<std::shared_ptr<dht::Value>>& data)->bool{
         //receive the genesis block
         //perform consensus as normal
+        //TODO: election candidate info.
+        try {
+            auto jsonObj =  utils::msgPackToJson((const char*)data[0]->data.data(), data[0]->data.size());
+            if(!this->VerifyMessage(jsonObj)){
+                return true;
+            }
 
+            auto dsa_publicKey = jsonObj["dsapk"].get<string>();
+            auto ies_publicKey = jsonObj["iespk"].get<string>();
+
+            //received chain initialization request
+            this->mlogger_->Debug("CHAIN_INIT RECEIVED FROM: ", ies_publicKey);
+
+            auto data = jsonObj["data"].get<std::string>();
+
+            auto plain = this->identity_->DecryptData(data);
+            std::vector<string> txs{plain};
+            auto block = this->CreateGenesis(txs);
+            block.height  = 0;
+
+            nlohmann::json payload,parsed;
+            block.to_json(parsed,block);
+
+            this->InitVote(block,this->identity_->IESPublicKey());
+
+            payload["data"] = parsed;
+            for(const auto& node: this->authenticated_nodes_ies_){
+                this->mlogger_->Debug("Sending init",block.block_header);
+                this->InternalMessage(node.first,payload,INIT_TX,[](bool){});
+            }
+
+
+        }catch(std::exception& e){
+            this->mlogger_->Error(e.what());
+        }
+        return true;
     });
 
     this->dht_net_->ChainCloseChannel([&](const std::vector<std::shared_ptr<dht::Value>>& data)->bool{
         //receive the genesis block
         //perform consensus as normal
-        //TODO: -->Similar to forking mechanism
+        try {
+            auto jsonObj =  utils::msgPackToJson((const char*)data[0]->data.data(), data[0]->data.size());
+            if(!this->VerifyMessage(jsonObj)){
+                return true;
+            }
+
+            auto dsa_publicKey = jsonObj["dsapk"].get<string>();
+            auto ies_publicKey = jsonObj["iespk"].get<string>();
+
+            //received fork initialization request
+            //broadcast o
+            this->mlogger_->Debug("CHAIN_CLOSE RECEIVED FROM: ", ies_publicKey);
+            auto data = jsonObj["data"].get<std::string>();
+
+            auto plain = this->identity_->DecryptData(data);
+            nlohmann::json parsed = nlohmann::json::parse(plain);
+
+            this->mlogger_->Debug(plain);
+            if (!utils::checkParams(parsed, {"height", "block_header", "merkle_root","tx_hashes"}))
+                return true;
+
+            this->mlogger_->Debug("Parsed:: data");
+
+            Block b;
+            b.height = parsed["height"].get<long>();
+            b.block_header = parsed["block_header"].get<std::string>();
+            b.merkle_root = parsed["merkle_root"].get<std::string>();
+            b.tx_hashes = parsed["tx_hashes"].get<std::vector<std::string>>();
+
+            b.iespk = ies_publicKey;
+
+            //check whether the fork is valid
+            if(b.height < this->block_chain_.back().height){
+                return true;
+            }
+            auto tree = MerkleNode::MerkleTree(b.tx_hashes);
+            if(tree->Hash() != this->block_chain_.back().merkle_root){
+                return true;
+            }
+
+            if(b.block_header != this->block_chain_.back().block_header){
+                return true;
+            }
+            this->CloseVote(b,this->identity_->IESPublicKey());
+            nlohmann::json payload;
+            payload["data"] = parsed;
+            for(const auto& node: this->authenticated_nodes_ies_){
+                this->InternalMessage(node.first,payload,CLOSE_TX,[](bool){});
+            }
+
+
+        }catch(std::exception e){
+
+        }
+        return true;
     });
 
 
@@ -202,9 +283,155 @@ void Blockchain::Start(){
         //receive types requests:
         ////get at a particular height
         //// get a range of heights
-        ////sepecify from parent or fork
+        ////specify from parent or fork
+        try {
+            auto jsonObj = utils::msgPackToJson((const char *) data[0]->data.data(), data[0]->size());
+            if (!this->VerifyMessage(jsonObj)) {
+                return true;
+            }
+            auto payload = jsonObj["data"].get<std::string>();
+            auto iespk = jsonObj["iespk"].get<std::string>();
+            auto dsapk = jsonObj["dsapk"].get<std::string>();
+
+            auto parsed = nlohmann::json::parse(this->identity_->DecryptData(payload));
+
+            std::string chain;
+            if (utils::checkParams(parsed, {"height", "chain"})) {
+                //retrieve block at that height
+                chain = parsed["chain"].get<std::string>();
+                int height = parsed["height"].get<int>();
+
+                if (height > this->block_chain_.back().height) {
+                    return true;
+                }
+
+                auto block = this->RetreiveBlock(height);
+                nlohmann::json resp, data;
+                block.to_json(data, block);
+
+                resp["data"] = std::vector<nlohmann::json>{data};
+                this->DirectMessage(iespk, resp, BLOCK_RX, [&](bool) {});
+                return true;
+            }
+
+            if (utils::checkParams(parsed, {"rangeStart", "rangeEnd", "chain"})) {
+                chain = parsed["chain"].get<std::string>();
+                int start_height = parsed["rangeStart"].get<int>();
+                int stop_height = parsed["rangeEnd"].get<int>();
+
+                if ((start_height >= this->block_chain_.back().height) ||
+                    (stop_height > this->block_chain_.back().height)) {
+                    return true;
+                }
+
+                std::vector<nlohmann::json> filtered;
+                for (int i = start_height; i <= stop_height; i++) {
+                    nlohmann::json tmp;
+                    auto block = this->RetreiveBlock(i);
+                    block.to_json(tmp, block);
+                    filtered.push_back(tmp);
+                }
+
+                nlohmann::json resp;
+                resp["data"] = filtered;
+                this->DirectMessage(iespk, resp, BLOCK_RX, [&](bool) {});
+                return true;
+            }
+
+            if (utils::checkParams(parsed, {"genesis", "chain"})) {
+                chain = parsed["chain"].get<std::string>();
+                int height = 0;
+
+                if (this->block_chain_.empty()) {
+                    return true;
+                }
+                if (height > this->block_chain_.back().height) {
+                    return true;
+                }
+
+                auto block = this->RetreiveBlock(height);
+                nlohmann::json resp, data;
+                block.to_json(data, block);
+
+                resp["data"] = std::vector<nlohmann::json>{data};
+                this->DirectMessage(iespk, resp, BLOCK_RX, [&](bool) {});
+                return true;
+
+            }
+
+            if (utils::checkParams(parsed, {"death", "chain"})) {
+                chain = parsed["chain"].get<std::string>();
+                int height = this->block_chain_.back().height;
+
+                if (this->block_chain_.empty()) {
+                    return true;
+                }
+
+
+                auto block = this->RetreiveBlock(height);
+                nlohmann::json resp, data;
+                block.to_json(data, block);
+
+                resp["data"] = std::vector<nlohmann::json>{data};
+                this->DirectMessage(iespk, resp, BLOCK_RX, [&](bool) {});
+                return true;
+            }
+        }catch(std::exception& e){
+            this->mlogger_->Error(e.what());
+        }
+        return true;
     });
 
+    this->dht_net_->BXRXChannel([&](const std::vector<std::shared_ptr<dht::Value>>& data)->bool{
+        try{
+            auto jsonObj =  utils::msgPackToJson((const char*)data[0]->data.data(), data[0]->data.size());
+            if(!this->VerifyMessage(jsonObj)){
+                return true;
+            }
+
+            auto dsa_publicKey = jsonObj["dsapk"].get<string>();
+            auto ies_publicKey = jsonObj["iespk"].get<string>();
+
+            this->mlogger_->Debug("BXRX RECEIVED: ",ies_publicKey);
+
+            nlohmann::json parsed,response;
+            auto dat = jsonObj["data"].get<std::string>();
+
+            auto plain = this->identity_->DecryptData(dat);
+            parsed = nlohmann::json::parse(plain);
+
+            this->mlogger_->Debug(plain);
+
+            for(json::iterator it = parsed.begin(); it != parsed.end(); ++it){
+                nlohmann::json parsed = (*it);
+                if(!utils::checkParams(parsed,{"height", "block_header", "merkle_root","tx_hashes"})){
+                    return true;
+                }
+                Block b;
+                b.height = parsed["height"].get<long>();
+                b.block_header = parsed["block_header"].get<std::string>();
+                b.merkle_root = parsed["merkle_root"].get<std::string>();
+                b.tx_hashes = parsed["tx_hashes"].get<std::vector<std::string>>();
+                b.txs = parsed["txs"].get<std::unordered_map<std::string,std::string>>();
+
+                this->BXRQVote(b,ies_publicKey);
+                //check if 2/3 of network agrees
+                for(const auto& height: this->block_rq_votes_){
+                    for(const auto& votes: height.second){
+                        if(static_cast<float>(votes.second.size()) >= 0.6667 * static_cast<float>(this->authenticated_nodes_ies_.size())){
+                            //2/3 of the network agrees on the block
+                            this->AddToChain(b,false);
+                        }
+                    }
+                }
+            }
+
+        }catch (std::exception& e){
+            this->mlogger_->Error(e.what());
+            return true;
+        }
+        return true;
+    });
     this->dht_net_->InternalChannel([&](const std::vector<std::shared_ptr<dht::Value>>& data)->bool{
         try{
 
@@ -263,7 +490,7 @@ void Blockchain::Start(){
                             
                             response["data"]["solution"] = parsed["challenge"].get<std::string>();
 
-                            this->DirectMessage(ies_publicKey,response,AUTH_SOLUTION,[&](bool){
+                            this->InternalMessage(ies_publicKey,response,AUTH_SOLUTION,[&](bool){
                                 //success
                             });
                             
@@ -299,7 +526,206 @@ void Blockchain::Start(){
                         }
                     break;
                     }
+                case FORK_TX:{
+                    this->mlogger_->Debug("Fork TX RECEIVED: ",ies_publicKey);
+                    try{
+                        nlohmann::json parsed,response;
+                        auto dat = jsonObj["data"].get<std::string>();
 
+                        auto plain = this->identity_->DecryptData(dat);
+                        parsed = nlohmann::json::parse(plain);
+
+                        if(!utils::checkParams(parsed,{"height"}))
+                            return true;
+
+                        //retrieve requested block
+                        if(parsed["height"].get<int>() > this->block_chain_.back().height){
+                            return true;
+                        }
+
+                        Block block = this->block_chain_[parsed["height"].get<int>()];
+                        this->ForkVote(block,ies_publicKey);
+                        //check if 2/3 of network agrees
+                        for(const auto& it: this->fork_votes_){
+                            this->mlogger_->Debug("FORK resolved");
+                            if(it.second.size() >= (0.6667 * this->authenticated_nodes_ies_.size())){
+                                this->mlogger_->Debug("Blockchain fork consensus reached");
+
+                                //close block chain and save to disk
+                                //stop creation of blocks
+                                this->block_worker_active_ = false;
+
+                                //sign the stored block chain
+                                std::string combined_headers;
+                                for(const auto& block: this->block_chain_){
+                                    combined_headers += block.block_header;
+                                }
+                                auto chain_hash = this->identity_->ComputeHash(combined_headers);
+                                //TODO: SAVE BLOCKS TO DISK, FILENAME=CHAIN-HASH
+                            }
+                        }
+
+                        std::vector<string> selected_nodes;
+                        std::unordered_map<std::string,bool> voted_nodes;
+
+                        std::for_each(this->fork_votes_.begin(),this->fork_votes_.end(),[&](const std::unordered_map<string,std::vector<string>>::value_type& votes){
+                            for(const auto& it: votes.second){
+                                voted_nodes[it] = true;
+                            }
+                        });
+
+                        std::for_each(this->authenticated_nodes_ies_.begin(),this->authenticated_nodes_ies_.end(),[&](const std::unordered_map<std::string,int>::value_type& nodes){
+                            if(voted_nodes.find(nodes.first) == voted_nodes.end()){
+                                selected_nodes.push_back(nodes.first);
+                            }
+                        });
+                        nlohmann::json payload;
+                        payload["data"] = parsed;
+
+                        for(const auto& it: selected_nodes){
+                            this->InternalMessage(it,payload,FORK_TX,[](bool){});
+                        }
+
+                    }catch (std::exception& e){
+                        this->mlogger_->Error(e.what());
+                        return true;
+                    }
+                    break;
+                }
+                case CLOSE_TX:
+                    this->mlogger_->Debug("Close TX RECEIVED: ",ies_publicKey);
+                    try{
+                        nlohmann::json parsed,response;
+                        auto dat = jsonObj["data"].get<std::string>();
+
+                        auto plain = this->identity_->DecryptData(dat);
+                        parsed = nlohmann::json::parse(plain);
+
+                        if(!utils::checkParams(parsed,{"height"}))
+                            return true;
+
+                        //retrieve requested block
+                        if(parsed["height"].get<int>() > this->block_chain_.back().height){
+                            return true;
+                        }
+
+                        Block block = this->block_chain_[parsed["height"].get<int>()];
+                        this->CloseVote(block,ies_publicKey);
+                        //check if 2/3 of network agrees
+                        for(const auto& it: this->close_votes_){
+                            this->mlogger_->Debug("CLOSURE resolved");
+                            if(it.second.size() >= (0.6667 * this->authenticated_nodes_ies_.size())){
+                                this->mlogger_->Debug("Blockchain fork consensus reached");
+
+                                //close block chain and save to disk
+                                //stop creation of blocks
+                                this->block_worker_active_ = false;
+
+                                //sign the stored block chain
+                                std::string combined_headers;
+                                for(const auto& block: this->block_chain_){
+                                    combined_headers += block.block_header;
+                                }
+                                auto chain_hash = this->identity_->ComputeHash(combined_headers);
+                                //TODO: SAVE BLOCKS TO DISK, FILENAME=CHAIN-HASH
+                            }
+                        }
+
+                        std::vector<string> selected_nodes;
+                        std::unordered_map<std::string,bool> voted_nodes;
+
+                        std::for_each(this->fork_votes_.begin(),this->fork_votes_.end(),[&](const std::unordered_map<string,std::vector<string>>::value_type& votes){
+                            for(const auto& it: votes.second){
+                                voted_nodes[it] = true;
+                            }
+                        });
+
+                        std::for_each(this->authenticated_nodes_ies_.begin(),this->authenticated_nodes_ies_.end(),[&](const std::unordered_map<std::string,int>::value_type& nodes){
+                            if(voted_nodes.find(nodes.first) == voted_nodes.end()){
+                                selected_nodes.push_back(nodes.first);
+                            }
+                        });
+                        nlohmann::json payload;
+                        payload["data"] = parsed;
+
+                        for(const auto& it: selected_nodes){
+                            this->InternalMessage(it,payload,CLOSE_TX,[](bool){});
+                        }
+
+                    }catch (std::exception& e){
+                        this->mlogger_->Error(e.what());
+                        return true;
+                    }
+                    break;
+                case INIT_TX:
+                    this->mlogger_->Debug("Init TX RECEIVED: ",ies_publicKey);
+                    try{
+                        nlohmann::json parsed,response;
+                        auto dat = jsonObj["data"].get<std::string>();
+
+                        auto plain = this->identity_->DecryptData(dat);
+                        parsed = nlohmann::json::parse(plain);
+
+                        this->mlogger_->Debug(plain);
+                        if (!utils::checkParams(parsed, {"height", "block_header", "merkle_root","tx_hashes"}))
+                            return true;
+
+                        this->mlogger_->Debug("Parsed:: data");
+
+                        Block b;
+                        b.height = parsed["height"].get<int>();
+                        b.block_header = parsed["block_header"].get<std::string>();
+                        b.merkle_root = parsed["merkle_root"].get<std::string>();
+                        b.tx_hashes = parsed["tx_hashes"].get<std::vector<std::string>>();
+                        b.txs = parsed["transactions"].get<std::unordered_map<std::string,std::string>>();
+
+                        b.iespk = ies_publicKey;
+                        this->InitVote(b,ies_publicKey);
+                        this->mlogger_->Debug("VOTED");
+                        //check if 2/3 of network agrees
+                        for(const auto& it: this->init_votes_){
+                            this->mlogger_->Debug("CHAIN INIT resolved");
+                            if(it.second.size() >= (0.6667 * static_cast<float>(this->authenticated_nodes_ies_.size()))){
+                                this->mlogger_->Debug("Blockchain init consensus reached");
+
+                                //close block chain and save to disk
+                                //start accepting blockds and transactions
+
+                                this->StartWorkers();
+
+                                //add the genesis block to the chain
+                                this->AddToChain(b,false);
+                            }
+                        }
+
+                        std::vector<string> selected_nodes;
+                        std::unordered_map<std::string,bool> voted_nodes;
+
+                        std::for_each(this->init_votes_.begin(),this->init_votes_.end(),[&](const std::unordered_map<string,std::vector<string>>::value_type& votes){
+                            for(const auto& it: votes.second){
+                                voted_nodes[it] = true;
+                            }
+                        });
+
+                        std::for_each(this->authenticated_nodes_ies_.begin(),this->authenticated_nodes_ies_.end(),[&](const std::unordered_map<std::string,int>::value_type& nodes){
+                            if(voted_nodes.find(nodes.first) == voted_nodes.end()){
+                                selected_nodes.push_back(nodes.first);
+                            }
+                        });
+                        nlohmann::json payload;
+                        this->mlogger_->Debug("loading json");
+                        payload["data"] = parsed;
+                        this->mlogger_->Debug("loaded");
+
+                        for(const auto& it: selected_nodes){
+                            this->InternalMessage(it,payload,INIT_TX,[](bool){});
+                        }
+
+                    }catch (std::exception& e){
+                        this->mlogger_->Error(e.what());
+                        return true;
+                    }
+                    break;
                 default:
                     return true;
                 
@@ -314,38 +740,21 @@ void Blockchain::Start(){
         return true;
     });
 
-    this->dht_net_->SyncChannel([&](const std::vector<std::shared_ptr<dht::Value>>& data)->bool{
-        try{
-            auto jsonObj =  utils::msgPackToJson((const char*)data[0]->data.data(), data[0]->data.size());
-            if(!this->VerifyMessage(jsonObj)){
-                return true;
-            }
-
-            auto dsa_publicKey = jsonObj["dsapk"].get<string>();
-            auto ies_publicKey = jsonObj["iespk"].get<string>();
-
-            switch (jsonObj["type"].get<int>()){
-                case SYNC_TX: {
-                    //recieved request to sync w/ requester
-                    break;
-                }
-                case SYNC_RX: {
-                    break;
-
-                }
-            }
-
-
-        }catch(std::exception& e){
-            this->mlogger_->Error(e.what());
-        }
-        return true;
-    });
-
     this->running_ = true;
     
 }
 
+void Blockchain::StartWorkers(){
+    this->verifier_active_ = true;
+    this->verification_worker_ = std::thread(&Blockchain::VerificationWorker,this);
+
+
+    //start block worker threads
+    this->block_worker_active_ = true;
+    this->block_worker_ = std::thread(&Blockchain::BlockWorker,this);
+    this->rx_block_worker_ = std::thread(&Blockchain::RXBlockWorker,this);
+    this->bx_block_worker_ = std::thread(&Blockchain::BXBlockWorker,this);
+}
 void Blockchain::SyncWorker(){
     this->mlogger_->Info("Started Sync Worker");
     while(this->sync_worker_active_){
@@ -392,15 +801,20 @@ void Blockchain::SyncWorker(){
     }
 }
 
+Block& Blockchain::RetreiveBlock(int height){
+    if(height < this->block_chain_.back().height){
+        //TODO: load block from disk
+    }
+    return this->block_chain_.back();
+}
 void Blockchain::VerificationWorker() {
-    this->mlogger_->Info("Started Verification Worker.");
+
     //TODO: check if genesis block indicates current chain is a fork
     // verification includes checking whether keys are valid in the parent blockchain
     ////// -> load the block chain from disk
     ////// -> verify keys
-
+    this->mlogger_->Info("Started Verification Worker.");
     while(this->verifier_active_) {
-
 
         //if block_reorg consolidation is happening prevent block creation
         std::lock_guard<std::mutex> lck(this->block_reorg_);
@@ -580,7 +994,7 @@ void Blockchain::RXBlockWorker() {
                 nlohmann::json payload;
                 payload["data"]["height"] = current_vote_height;
                 for(const auto& node: selected){
-                    this->DirectMessage(node,payload,BX_VOTE_RQ,[&](bool){});
+                    this->InternalMessage(node,payload,BX_VOTE_RQ,[&](bool){});
                 }
 
 
@@ -643,7 +1057,7 @@ void Blockchain::Consensus(){
 
             //2/3 votes achieved
             //add to chain
-            this->AddToChain(this->proposed_block_mempool_[header]);
+            this->AddToChain(this->proposed_block_mempool_[header],true);
 
             this->TransactionPurge(this->block_chain_.back().timestamp);
 
@@ -717,6 +1131,20 @@ void Blockchain::Consensus(){
 
     }
 }
+void Blockchain::InitVote(const Block& b,const std::string& iespk){
+    std::lock_guard<std::mutex> lck(this->fork_m);
+    this->init_votes_[b.block_header].push_back(iespk);
+}
+
+void Blockchain::CloseVote(const Block& b,const std::string& iespk){
+    std::lock_guard<std::mutex> lck(this->fork_m);
+    this->close_votes_[b.block_header].push_back(iespk);
+}
+
+void Blockchain::ForkVote(const Block& b,const std::string& iespk){
+    std::lock_guard<std::mutex> lck(this->fork_m);
+    this->fork_votes_[b.block_header].push_back(iespk);
+}
 
 void Blockchain::BlockVote(const Block& b,std::string iespk){
     std::lock_guard<std::mutex> lck(this->mutex);
@@ -783,6 +1211,12 @@ void Blockchain::AddKnownNodes(const std::string& path){
     
 }
 
+void Blockchain::BXRQVote(const Block& b,const std::string& iespk){
+    std::lock_guard<std::mutex> lck(this->fork_m);
+    this->block_rq_votes_[b.height][b.block_header].push_back(iespk);
+    this->block_rq_mem_[b.height][b.block_header] = b;
+}
+
 bool Blockchain::VerifyMessage(const nlohmann::json& jsonObj){
     if(!utils::checkParams(jsonObj,{"dsapk","iespk","data","signature","type"}))
         return false;
@@ -808,14 +1242,6 @@ bool Blockchain::VerifyMessage(const nlohmann::json& jsonObj){
     return true;
 
 }
-void Blockchain::RequestBlocks(const std::string& iespk){
-    nlohmann::json payload;
-    payload["data"]["type"] = "RQ";
-//    payload["data"]["last_header"] = this->last_agreed_block_header_;
-
-    this->DirectMessage(iespk,payload,BX_UPDATE,[&](bool){});
-}
-
 
 std::vector<std::string> Blockchain::GetBlocksJSON(const std::string& from,const std::string& to){
     auto blocks = this->GetBlocks(from, to);
@@ -858,7 +1284,7 @@ void Blockchain::AddChallenge(const std::string& ies_pk,const std::string& solut
     this->auth_solutions_[ies_pk] = solution;
 }
 
-void Blockchain::DirectMessage(const std::string& dest_ies_pk,nlohmann::json data,int type,std::function<void(bool)> cb){
+void Blockchain::InternalMessage(const std::string& dest_ies_pk,nlohmann::json data,int type,std::function<void(bool)> cb){
     auto cipher = this->identity_->EncryptData(dest_ies_pk,data["data"].dump());
     auto signature = this->identity_->SignData(cipher);
 
@@ -870,13 +1296,25 @@ void Blockchain::DirectMessage(const std::string& dest_ies_pk,nlohmann::json dat
     payload["dsapk"] = this->identity_->DSAPublicKey();
 
     std::string dst = dest_ies_pk;
-    if(type == TX_BROADCAST || type == BX_BROADCAST || type == SYNC_TX){
-        dst = dst + std::to_string(type);
-    }
-
     auto d = payload.dump();
     this->dht_net_->Put(dst,payload.dump(),std::move(cb));
 }
+
+void Blockchain::DirectMessage(const std::string& dest_ies_pk,nlohmann::json data,int type,std::function<void(bool)> cb){
+    auto cipher = this->identity_->EncryptData(dest_ies_pk,data["data"].dump());
+    auto signature = this->identity_->SignData(cipher);
+
+    nlohmann:json payload;
+    payload["data"] = cipher;
+    payload["signature"] = signature;
+    payload["type"] = -1;
+    payload["iespk"] = this->identity_->IESPublicKey();
+    payload["dsapk"] = this->identity_->DSAPublicKey();
+
+    auto d = payload.dump();
+    this->dht_net_->Put(dest_ies_pk+std::to_string(type),payload.dump(),std::move(cb));
+}
+
 
 void Blockchain::Announce(const std::function<void(bool)>& cb){
     this->mlogger_->Debug("Announcing -> Startup");
@@ -938,12 +1376,21 @@ void Blockchain::TransactionVote(const std::string& tx_hash,const std::string& t
     }
 }
 
+Block Blockchain::CreateGenesis(std::vector<std::string>& txs){
+    std::vector<std::string> tx_hashes;
+    for(const auto& tx: txs){
+        auto hash = this->identity_->ComputeHash(tx);
+        tx_hashes.push_back(hash);
+        this->transaction_mempool_[hash] = tx;
+    }
+    return this->CreateBlock(tx_hashes,0);
+}
 
 Block Blockchain::CreateBlock(std::vector<std::string>& txs,int init_height) {
     Block block;
     std::string last_tx;
     for (const auto &tx: txs) {
-        block.tx_hashes.push_back(tx);
+        block.tx_hashes.push_back(tx) ;
         block.txs[tx] = this->transaction_mempool_[tx];
         last_tx = tx;
     }
@@ -958,6 +1405,9 @@ Block Blockchain::CreateBlock(std::vector<std::string>& txs,int init_height) {
             block.height = this->block_chain_.back().height + 1;
         }
     }
+    if(init_height == 0){
+        block.height = 0;
+    }
 
     block.merkle_root = tree->Hash();
 
@@ -971,16 +1421,18 @@ Block Blockchain::CreateBlock(std::vector<std::string>& txs,int init_height) {
 }
 
 
-void Blockchain::AddToChain(Block block){
+void Blockchain::AddToChain(Block block,bool fill){
     //fill in missing transactions
-    for(auto& tx: block.tx_hashes){
-        if(this->transaction_mempool_.find(tx) == this->transaction_mempool_.end()){
-            //TODO: EDGE CASE
-        }
-        block.txs[tx] = this->transaction_mempool_[tx];
+    if(fill) {
+        for (auto &tx: block.tx_hashes) {
+            if (this->transaction_mempool_.find(tx) == this->transaction_mempool_.end()) {
+                //TODO: EDGE CASE
+            }
+            block.txs[tx] = this->transaction_mempool_[tx];
 
-        this->transaction_votes_.erase(tx);
-        this->sent_votes_.erase(tx);
+            this->transaction_votes_.erase(tx);
+            this->sent_votes_.erase(tx);
+        }
     }
 
     if(this->block_chain_.empty()){

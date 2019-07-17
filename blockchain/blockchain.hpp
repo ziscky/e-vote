@@ -11,7 +11,20 @@
 #define SYNC_RX 11
 #define BX_VOTE_RQ 12
 
+#define FORK_BROADCAST 13
+#define FORK_TX 14
+#define FORK_INIT 15
+
+#define CLOSE_BROADCAST 18
+#define CLOSE_TX 16
+
+#define INIT_BROADCAST 19
+#define INIT_TX 17
+
 #define BLOCK_MAX 3
+
+#define BLOCK_RQ 20
+#define BLOCK_RX 21
 
 
 #include "network/kdht.hpp"
@@ -25,6 +38,8 @@
 #include <vector>
 #include <mutex>
 #include <thread>
+#include <iostream>
+#include <fstream>
 
 using json = nlohmann::json;
 
@@ -95,7 +110,7 @@ class Blockchain{
         std::shared_ptr<Block> GetBlock(const std::string&);
         std::vector<std::string> GetBlocksJSON(const std::string& from,const std::string& to);
 
-        void AddToChain(Block);
+        void AddToChain(Block,bool);
         void Consensus();
         void TransactionPurge(long timestamp);
         void BlockVote(const Block& b,std::string iespk);
@@ -165,21 +180,34 @@ class Blockchain{
         ///////////////////// FORKING ///////////////////////////////////////////
         //stores fork_hash: [pks...]
         std::unordered_map<std::string,std::vector<std::string>> fork_votes_;
+        std::unordered_map<std::string,std::vector<std::string>> close_votes_;
+        std::unordered_map<std::string,std::vector<std::string>> init_votes_;
 
         //stores a map of node_id_ : int
         //total votes for each known node
         std::unordered_map<string,int> node_votes_;
         std::shared_ptr<Logger> mlogger_;
+        std::mutex fork_m;
+        void ForkVote(const Block&,const std::string&);
+        void CloseVote(const Block&,const std::string&);
+        void InitVote(const Block&,const std::string&);
 
         ///////////////////////////////// CONCURRENCY PRIMITIVES /////////////////////
         std::shared_ptr<std::condition_variable> cond;
         std::mutex mutex;
 
         void DirectMessage(const std::string& ies_pk,nlohmann::json data,int type,std::function<void(bool)> cb);
+        void InternalMessage(const std::string& dest_ies_pk,nlohmann::json data,int type,std::function<void(bool)> cb);
         bool VerifyMessage(const nlohmann::json&);
 
         ////////////////////////////////////////////////////////////////////////////
 
+        std::map<int,std::unordered_map<std::string,std::vector<std::string>>> block_rq_votes_;
+        std::map<int,std::unordered_map<std::string,Block>> block_rq_mem_;
+        Block& RetreiveBlock(int height);
+        void BXRQVote(const Block& b,const std::string& iespk);
+        Block CreateGenesis(std::vector<std::string>& txs);
+        void StartWorkers();
         bool running_ = false;
 
         
@@ -187,7 +215,7 @@ class Blockchain{
         Blockchain(NodeConf dht_conf,std::shared_ptr<Identity> id,std::shared_ptr<Logger> logger){
             cond = std::make_shared<std::condition_variable>();
             mlogger_ = logger;
-            dht_net_ = std::make_unique<DHTNode>(dht_conf,cond,logger);
+            dht_net_ = std::make_unique<DHTNode>(dht_conf,logger);
             identity_ = id;
         };
         ~Blockchain()= default;
