@@ -43,8 +43,4 @@ unset(PYTHON_EXTENSIONS CACHE)
 ADD_EXECUTABLE(peer peer.cpp)
 target_link_libraries(peer e_vote)
 
-ADD_EXECUTABLE(enctest enctest.cpp)
-target_link_libraries(enctest e_vote)
-
 install(TARGETS peer DESTINATION "${CMAKE_SOURCE_DIR}/.")
-install(TARGETS enctest DESTINATION "${CMAKE_SOURCE_DIR}/.")
