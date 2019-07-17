@@ -35,4 +35,5 @@ RUN git clone https://github.com/ziscky/e-vote\
     && cmake --build build --target install -- -j 4
 
 WORKDIR /e-vote/
-ENTRYPOINT ["/e-vote/peer","/configs/conf.json","/configs/id.json","/configs/nodes.json"]
+ENV LD_LIBRARY_PATH="/lib:/usr/lib:/usr/local/lib"
+ENTRYPOINT ["/e-vote/peer","/conf.json","/id.json","/nodes.json"]
