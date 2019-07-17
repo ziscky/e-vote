@@ -74,10 +74,13 @@ int main(int argc,char **argv){
         const char* line_read = readline((conf.main?"[MAINNET]:>>":"[TESTNET]:>>"));
         if (line_read && *line_read)
             add_history(line_read);
-        if(line_read == NULL){
-            break;
+        std::string line;
+        if(line_read == nullptr){
+            std::cin >> line;
+        }else{
+            line = line_read;
         }
-        std::string line(line_read);
+
         if (!line.empty() && line[0] == '\0')
             break;
 
