@@ -15,7 +15,7 @@ std::vector<uint8_t> unpackBlob(const msgpack::object& o);
 nlohmann::json msgPackToJson(const char* data,size_t size);
 void splitString(const string& s, char c,vector<string>& v);
 bool checkParams(const nlohmann::json& j,std::initializer_list<string> keys);
-
+bool vectorExists(const std::vector<std::string>& vec,const std::string& item);
 
 
 

@@ -20,7 +20,7 @@
 #include <cryptopp/sha.h>
 #include <cryptopp/filters.h>
 
-Identity::Identity(std::string public_key,std::string private_key,std::string e_public_key,std::string e_private_key){
+Identity::Identity(const std::string& public_key,const std::string& private_key,const std::string& e_public_key,const std::string& e_private_key){
     encoded_keypair_ = std::make_unique<HexKeyPair>(public_key,private_key,e_public_key,e_private_key);
     keygen_ = std::make_unique<KeyGen<HexKeyPair>>(false);
 

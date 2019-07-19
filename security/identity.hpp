@@ -5,7 +5,7 @@
 
 class Identity{
     public:
-        Identity(std::string public_key,std::string private_key,std::string e_public_key,std::string e_private_key);
+        Identity(const std::string& public_key,const std::string& private_key,const std::string& e_public_key,const std::string& e_private_key);
         explicit Identity(const std::string& path);
         // ~Identity();
         std::string SignData(const std::string&);

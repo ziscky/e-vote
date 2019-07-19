@@ -112,4 +112,14 @@ bool checkParams(const nlohmann::json& j,std::initializer_list<string> keys){
     return true;
     
 }
+
+bool vectorExists(const std::vector<std::string>& vec,const std::string& item){
+    for(const auto& node: vec){
+        if (node == item){
+            return true;
+        }
+    }
+    return false;
+}
+
 }

@@ -79,6 +79,14 @@ void DHTNode::AnnounceChannel(std::function<bool(const std::vector<std::shared_p
     }
 }
 
+void DHTNode::ReactAnnounceChannel(std::function<bool(const std::vector<std::shared_ptr<dht::Value>>&)> cb){
+    try{
+        this->node_.listen(dht::InfoHash::get(react_announce_channel_),cb);
+    }catch(const exception& e){
+        this->mlogger_->Error(e.what());
+    }
+}
+
 void DHTNode::BXRQChannel(std::function<bool(const std::vector<std::shared_ptr<dht::Value>>&)> cb){
     try{
         this->node_.listen(dht::InfoHash::get(bxrq_channel_),cb);
@@ -86,6 +94,23 @@ void DHTNode::BXRQChannel(std::function<bool(const std::vector<std::shared_ptr<d
         this->mlogger_->Error(e.what());
     }
 }
+
+void DHTNode::TXRQChannel(std::function<bool(const std::vector<std::shared_ptr<dht::Value>>&)> cb){
+    try{
+        this->node_.listen(dht::InfoHash::get(txrq_channel_),cb);
+    }catch(const exception& e){
+        this->mlogger_->Error(e.what());
+    }
+}
+
+void DHTNode::TXRXChannel(std::function<bool(const std::vector<std::shared_ptr<dht::Value>>&)> cb){
+    try{
+        this->node_.listen(dht::InfoHash::get(txrx_channel_),cb);
+    }catch(const exception& e){
+        this->mlogger_->Error(e.what());
+    }
+}
+
 
 void DHTNode::BXRXChannel(std::function<bool(const std::vector<std::shared_ptr<dht::Value>>&)> cb){
     try{

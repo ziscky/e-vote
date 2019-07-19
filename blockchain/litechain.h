@@ -5,6 +5,7 @@
 #ifndef E_VOTE_LITECHAIN_H
 #define E_VOTE_LITECHAIN_H
 #include "blockchain.hpp"
+#include <typeinfo>
 
 
 class Litechain {//{
@@ -13,7 +14,7 @@ class Litechain {//{
         std::shared_ptr<std::condition_variable> cond;
         std::shared_ptr<Logger> mlogger_;
         std::mutex mutex,fork_m;
-        bool running;
+        bool running,init_consensus_reached_ = false;
         std::unordered_map<string,string> auth_solutions_;
 
         //stores  a map of node_ids against public key.
@@ -27,6 +28,7 @@ class Litechain {//{
 
         std::map<int,std::unordered_map<std::string,std::vector<std::string>>> block_rq_votes_;
         std::map<int,std::unordered_map<std::string,Block>> block_rq_mem_;
+        std::unordered_map<std::string,std::string> transaction_mem_;
 
         std::unique_ptr<DHTNode> dht_net_;
         void DirectMessage(const std::string& dest_ies_pk,nlohmann::json data,int type,std::function<void(bool)> cb);
@@ -48,8 +50,7 @@ class Litechain {//{
         void InternalMessage(const std::string& dest_ies_pk,nlohmann::json data,int type,std::function<void(bool)> cb);
         void AddKnownNode(const std::string& ies_pk,const std::string& dsa_pk);
         void Announce(const std::function<void(bool)>& cb);
-
-
+        void CacheTX(const std::string&,const std::string&);
 
 
 
@@ -82,6 +83,9 @@ class Litechain {//{
         void CloseChain();
         std::string SeedKeys(const string& seed,bool deterministic);
         std::string GetBlock(int height,std::string chain);
+        std::string GetTransactions();
+        std::string GetTransaction(std::string pubkey,std::string chain);
+        void RequestTransaction(std::string pubkey, std::string chain);
         void BroadcastTX(const string& tx);
         void BlockRQ(nlohmann::json);
         void AddKnownNodes(const std::string& path);

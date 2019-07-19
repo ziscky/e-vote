@@ -31,8 +31,7 @@ RUN git clone https://github.com/weidai11/cryptopp.git\
 RUN git clone https://github.com/ziscky/e-vote\
     && mkdir configs && cd e-vote && mkdir build && cd build\
     && cmake -DCMAKE_BUILD_TYPE=Debug -DPYTHON_EXTENSIONS=OFF -DCMAKE_CXX_COMPILER=/usr/bin/g++ ..\
-    && cd /e-vote/\
-    && cmake --build build --target install -- -j 4 && cd /
+    && cd /e-vote/ && cmake --build build --target install -- -j 4
 
 WORKDIR /e-vote/
 ENV LD_LIBRARY_PATH="/lib:/usr/lib:/usr/local/lib"

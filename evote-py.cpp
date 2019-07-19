@@ -12,7 +12,7 @@ using namespace boost::python;
 
 
 BOOST_PYTHON_MODULE(evotepy){
-    class_<Identity,boost::noncopyable>("Identity",init<const std::string&>())
+    class_<Identity,boost::noncopyable>("Identity",init<const std::string&,const std::string&,const std::string&,const std::string&>())
             .def("Sign",&Identity::SignData)
             .def("Decrypt",&Identity::DecryptData)
             .def("ComputeHash",&Identity::ComputeHash)
@@ -32,5 +32,7 @@ BOOST_PYTHON_MODULE(evotepy){
             .def("Start",&Litechain::Start)
             .def("GetBlock",&Litechain::GetBlock)
             .def("DHT",&Litechain::DHTRoutingTable)
-            .def("AddKnownNodes",&Litechain::AddKnownNodes);
+            .def("AddKnownNodes",&Litechain::AddKnownNodes)
+            .def("GetTransactions",&Litechain::GetTransactions)
+            .def("GetTransaction",&Litechain::GetTransaction);
 }

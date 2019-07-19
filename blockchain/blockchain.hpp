@@ -11,6 +11,11 @@
 #define SYNC_RX 11
 #define BX_VOTE_RQ 12
 
+
+#define R_AUTH_CHALLENGE 222
+#define R_AUTH_SOLUTION 777
+#define R_ANNOUNCE 666
+
 #define FORK_BROADCAST 13
 #define FORK_TX 14
 #define FORK_INIT 15
@@ -25,6 +30,11 @@
 
 #define BLOCK_RQ 20
 #define BLOCK_RX 21
+
+#define TRANSACTION_RQ 99
+#define TRANSACTION_RX 99
+
+#define LITE_RX 22
 
 
 #include "network/kdht.hpp"
@@ -51,6 +61,7 @@ struct Block{
     std::unordered_map<std::string,std::string> txs;
     std::string prev_block;
     std::string next_block;
+    std::string type; //PARENT/FORK
     long timestamp;
 
     //
@@ -58,7 +69,7 @@ struct Block{
 
     void to_json(json& j, const Block& b) {
         j = json{{"height",b.height},{"block_header", b.block_header}, {"merkle_root", b.merkle_root}, {"tx_hashes", b.tx_hashes},
-                 {"transactions",b.txs},{"prev_hash",b.prev_block},{"next_hash",b.next_block},{"timestamp",b.timestamp},};
+                 {"transactions",b.txs},{"prev_hash",b.prev_block},{"next_hash",b.next_block},{"timestamp",b.timestamp},{"type",b.type},};
     }
 
     void from_json(const json& j, Block& b) {
@@ -70,6 +81,7 @@ struct Block{
         j.at("next_hash").get_to(b.next_block);
         j.at("timestamp").get_to(b.timestamp);
         j.at("height").get_to(b.height);
+        j.at("type").get_to(b.type);
 
     }
 
@@ -83,6 +95,7 @@ class Blockchain{
         /////////////////////////////////////// BX - CONTAINERS ////////////////////////////////
         //!!!the block chain!!!
         std::vector<Block> block_chain_;
+        bool init_consensus_reached_ = false;
 
         //stores all blocks received from the network
         moodycamel::BlockingReaderWriterQueue<Block> received_blocks_;
@@ -101,6 +114,7 @@ class Blockchain{
         std::unordered_map<std::string,Block> proposed_block_mempool_;
 
         bool NewBX(std::string,long);
+        bool fork_consensus_reached_ = false;
 
         void RequestBlocks(const std::string&);
         Block CreateBlock(std::vector<string>&,int);
@@ -180,6 +194,9 @@ class Blockchain{
         ///////////////////// FORKING ///////////////////////////////////////////
         //stores fork_hash: [pks...]
         std::unordered_map<std::string,std::vector<std::string>> fork_votes_;
+        int fork_init_votes_ = 0;
+        int fork_height = 0;
+
         std::unordered_map<std::string,std::vector<std::string>> close_votes_;
         std::unordered_map<std::string,std::vector<std::string>> init_votes_;
 
@@ -191,6 +208,9 @@ class Blockchain{
         void ForkVote(const Block&,const std::string&);
         void CloseVote(const Block&,const std::string&);
         void InitVote(const Block&,const std::string&);
+        void ForkInitVote(const std::string& iespk);
+        bool ForkExists();
+        Block CreateFork(std::vector<std::string>& txs,int height);
 
         ///////////////////////////////// CONCURRENCY PRIMITIVES /////////////////////
         std::shared_ptr<std::condition_variable> cond;
@@ -204,10 +224,13 @@ class Blockchain{
 
         std::map<int,std::unordered_map<std::string,std::vector<std::string>>> block_rq_votes_;
         std::map<int,std::unordered_map<std::string,Block>> block_rq_mem_;
-        Block& RetreiveBlock(int height);
+        Block& RetreiveBlock(int height,std::string chain);
         void BXRQVote(const Block& b,const std::string& iespk);
         Block CreateGenesis(std::vector<std::string>& txs);
         void StartWorkers();
+        bool CheckDuplicate(const std::string& pubkey);
+        std::string CheckParentExistence(const std::string& pubkey);
+        std::vector<std::string> getLiteNodes();
         bool running_ = false;
 
         

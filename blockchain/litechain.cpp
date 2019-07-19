@@ -48,12 +48,11 @@ std::string Litechain::SeedKeys(const string& seed,bool deterministic){
     creds["private_key"] = keys.private_key;
     creds["public_key"] = keys.public_key;
     creds["e_private_key"] = keys.e_private_key;
-    creds["public_key"] = keys.e_public_key;
+    creds["e_public_key"] = keys.e_public_key;
 
     return creds.dump();
 }
 void Litechain::BroadcastTX(const string& tx) {
-    std::cout<<tx<<std::endl;
     std::lock_guard<std::mutex> lck(this->mutex);
     nlohmann::json data,payload,tmp;
     tmp = nlohmann::json::parse(tx);
@@ -68,8 +67,7 @@ void Litechain::BroadcastTX(const string& tx) {
     data["timestamp"] = ms.count();
     payload["data"] = data;
 
-
-    this->mlogger_->Info("Broadcasting TX: ",payload.dump());
+    this->mlogger_->Info("Broadcasting TX: ",data["signature"]);
     for(auto& node: authenticated_nodes_ies_){
         this->DirectMessage(node.first,payload,TX_BROADCAST,[&](bool){
 
@@ -88,6 +86,7 @@ void Litechain::BlockRQ(nlohmann::json data) {
 void Litechain::Start() {
     this->dht_net_->announce_channel_ = this->identity_->DSAPublicKey();
     this->dht_net_->internal_channel_ = this->identity_->IESPublicKey();
+    this->dht_net_->react_announce_channel_ = this->identity_->IESPublicKey() +std::to_string(R_ANNOUNCE);
     this->dht_net_->tx_channel_ = this->identity_->IESPublicKey()+std::to_string(TX_BROADCAST);
     this->dht_net_->block_channel_= this->identity_->IESPublicKey()+std::to_string(BX_BROADCAST);
     this->dht_net_->fork_channel_ = this->identity_->IESPublicKey()+std::to_string(FORK_BROADCAST);
@@ -95,9 +94,38 @@ void Litechain::Start() {
     this->dht_net_->close_channel_ = this->identity_->IESPublicKey()+std::to_string(CLOSE_BROADCAST);
     this->dht_net_->bxrq_channel_ = this->identity_->IESPublicKey()+std::to_string(BLOCK_RQ);
     this->dht_net_->bxrx_channel_ = this->identity_->IESPublicKey()+std::to_string(BLOCK_RX);
+    this->dht_net_->txrx_channel_ = this->identity_->IESPublicKey()+std::to_string(TRANSACTION_RX);
     this->dht_net_->Start();
     this->Announce([&](bool success){});
     this->running = true;
+
+    this->dht_net_->TXRXChannel([&](const std::vector<std::shared_ptr<dht::Value>>& data)->bool{
+        try {
+            auto jsonObj = utils::msgPackToJson((const char *) data[0]->data.data(), data[0]->data.size());
+            if (!this->VerifyMessage(jsonObj)) {
+                return true;
+            }
+
+            auto dsa_publicKey = jsonObj["dsapk"].get<string>();
+            auto ies_publicKey = jsonObj["iespk"].get<string>();
+
+            this->mlogger_->Debug("TXRX RECEIVED: ", ies_publicKey);
+
+            nlohmann::json _parsed, response;
+            auto dat = jsonObj["data"].get<std::string>();
+
+            auto plain = this->identity_->DecryptData(dat);
+            _parsed = nlohmann::json::parse(plain);
+
+            //contains tx
+            this->mlogger_->Debug(plain);
+            this->CacheTX(_parsed["pk"].get<std::string>(),_parsed["data"].get<std::string>());
+        }catch(std::exception& e){
+            this->mlogger_->Error(e.what());
+        }
+        return true;
+    });
+
 
     this->dht_net_->InternalChannel([&](const std::vector<std::shared_ptr<dht::Value>>& data)->bool{
         try{
@@ -126,7 +154,35 @@ void Litechain::Start() {
 
                         response["data"]["solution"] = parsed["challenge"].get<std::string>();
 
-                        this->InternalMessage(ies_publicKey,response,AUTH_SOLUTION,[&](bool){
+                        this->InternalMessage(ies_publicKey,response,AUTH_SOLUTION,[&](bool s){
+                            //success
+                            if(s)
+                                this->mlogger_->Debug("Succesfully sent solution");
+                        });
+
+
+                    }catch(std::exception& e){
+                        this->mlogger_->Error(e.what());
+                        return true;
+                    }
+                    break;
+                }
+                case R_AUTH_CHALLENGE: {
+                    this->mlogger_->Debug("R_CHALLENGE RECIEVED FROM: ",ies_publicKey);
+                    //received authentication challenge from alleged known node
+                    try{
+                        nlohmann::json parsed,response;
+                        auto dat = jsonObj["data"].get<std::string>();
+
+                        auto plain = this->identity_->DecryptData(dat);
+                        parsed = nlohmann::json::parse(plain);
+
+                        if(!utils::checkParams(parsed,{"challenge"}))
+                            return true;
+
+                        response["data"]["solution"] = parsed["challenge"].get<std::string>();
+
+                        this->InternalMessage(ies_publicKey,response,R_AUTH_SOLUTION,[&](bool){
                             //success
                         });
 
@@ -138,9 +194,37 @@ void Litechain::Start() {
                     break;
                 }
 
-
                 case AUTH_SOLUTION: {
                     this->mlogger_->Debug("SOLUTION RECIEVED FROM: ",ies_publicKey);
+                    try{
+                        nlohmann::json parsed;
+                        auto dat = jsonObj["data"].get<std::string>();
+
+                        auto plaint = this->identity_->DecryptData(dat);
+                        parsed = nlohmann::json::parse(plaint);
+
+                        if(!utils::checkParams(parsed,{"solution"}))
+                            return true;
+
+                        if(!this->CheckSolution(ies_publicKey,parsed["solution"].get<std::string>())){
+                            return true;
+                        }
+
+                        nlohmann::json payload;
+                        payload["iespk"] = this->identity_->IESPublicKey();
+                        payload["dsapk"] = this->identity_->DSAPublicKey();
+
+                        this->DirectMessage(ies_publicKey,payload,R_ANNOUNCE,[](bool){});
+                        this->AuthNode(ies_publicKey);
+
+                    }catch(std::exception& e){
+                        this->mlogger_->Error(e.what());
+                        return true;
+                    }
+                    break;
+                }
+                case R_AUTH_SOLUTION:
+                    this->mlogger_->Debug("R_SOLUTION RECIEVED FROM: ",ies_publicKey);
                     try{
                         nlohmann::json parsed;
                         auto dat = jsonObj["data"].get<std::string>();
@@ -161,7 +245,6 @@ void Litechain::Start() {
                         return true;
                     }
                     break;
-                }
 
                 case FORK_TX:{
                     this->mlogger_->Debug("Fork TX RECEIVED: ",ies_publicKey);
@@ -170,10 +253,11 @@ void Litechain::Start() {
                         auto dat = jsonObj["data"].get<std::string>();
 
                         auto plain = this->identity_->DecryptData(dat);
+                        this->mlogger_->Debug(plain);
                         parsed = nlohmann::json::parse(plain);
 
-                        this->mlogger_->Debug(plain);
-                        if (!utils::checkParams(parsed, {"height", "block_header", "merkle_root","tx_hashes"}))
+
+                        if (!utils::checkParams(parsed, {"height", "block_header"}))
                             return true;
 
                         this->mlogger_->Debug("Parsed:: data");
@@ -181,9 +265,6 @@ void Litechain::Start() {
                         Block b;
                         b.height = parsed["height"].get<long>();
                         b.block_header = parsed["block_header"].get<std::string>();
-                        b.merkle_root = parsed["merkle_root"].get<std::string>();
-                        b.tx_hashes = parsed["tx_hashes"].get<std::vector<std::string>>();
-
 
 
                         this->ForkVote(b,ies_publicKey);
@@ -212,7 +293,7 @@ void Litechain::Start() {
                         parsed = nlohmann::json::parse(plain);
 
                         //retrieve requested block
-                        this->mlogger_->Debug(plain);
+//                        this->mlogger_->Debug(plain);
                         if (!utils::checkParams(parsed, {"height", "block_header", "merkle_root","tx_hashes"}))
                             return true;
 
@@ -243,6 +324,9 @@ void Litechain::Start() {
                     }
                     break;
                 case INIT_TX:
+                    if(this->init_consensus_reached_){
+                        break;
+                    }
                     this->mlogger_->Debug("Init TX RECEIVED: ",ies_publicKey);
                     try{
                         nlohmann::json parsed,response;
@@ -251,7 +335,7 @@ void Litechain::Start() {
                         auto plain = this->identity_->DecryptData(dat);
                         parsed = nlohmann::json::parse(plain);
 
-                        this->mlogger_->Debug(plain);
+//                        this->mlogger_->Debug(plain);
                         if (!utils::checkParams(parsed, {"height", "block_header", "merkle_root","tx_hashes"}))
                             return true;
 
@@ -267,10 +351,11 @@ void Litechain::Start() {
                         this->InitVote(b,ies_publicKey);
                         //check if 2/3 of network agrees
                         for(const auto& it: this->init_votes_){
-                            this->mlogger_->Debug("CHAIN INIT resolved");
-                            if(it.second.size() >= (0.6667 * static_cast<float>(this->authenticated_nodes_ies_.size()))){
-                                this->mlogger_->Debug("Blockchain init consensus reached");
 
+                            if(static_cast<float>(it.second.size()) >= (0.6667 * static_cast<float>(this->authenticated_nodes_ies_.size()))){
+                                this->mlogger_->Debug("CHAIN INIT resolved");
+                                this->mlogger_->Debug("Blockchain init consensus reached");
+                                this->init_consensus_reached_ = true;
 
                             }
                         }
@@ -281,7 +366,28 @@ void Litechain::Start() {
                         return true;
                     }
                     break;
+                case LITE_RX:
+                    this->mlogger_->Debug("Received verified transaction");
+                    try{
+                        nlohmann::json parsed,response;
+                        auto dat = jsonObj["data"].get<std::string>();
 
+                        auto plain = this->identity_->DecryptData(dat);
+                        parsed = nlohmann::json::parse(plain);
+
+
+                        this->mlogger_->Debug(parsed["data"].get<std::string>());
+//                        this->mlogger_->Debug();
+
+                        if (!this->identity_->VerifyData(parsed["pk"].get<std::string>(),parsed["data"].get<std::string>(),parsed["signature"].get<std::string>())){
+                            this->mlogger_->Error("TX verification failed!");
+                            return true;
+                        };
+
+                        this->CacheTX(parsed["signature"].get<std::string>(),parsed["data"].get<std::string>());
+                    }catch(std::exception& e){
+                        this->mlogger_->Error(e.what());
+                    }
                 default:
                     return true;
 
@@ -319,10 +425,31 @@ void Litechain::Start() {
             this->mlogger_->Debug("CHALLENGE SEND: ",success);
         });
 
-        //re-announce for node to authenticate me
-        if(this->authenticated_nodes_ies_.find(ies_publicKey) == this->authenticated_nodes_ies_.end())
-            this->Announce(dsa_publicKey,[&](bool){});
+        return true;
+    });
 
+    this->dht_net_->ReactAnnounceChannel([&](const std::vector<std::shared_ptr<dht::Value>>& data)->bool{
+        auto jsonObj =  utils::msgPackToJson((const char*)data[0]->data.data(), data[0]->data.size());
+        if(!utils::checkParams(jsonObj,{"dsapk","iespk"}))
+            return true;
+
+        auto dsa_publicKey = jsonObj["dsapk"].get<string>();
+        auto ies_publicKey = jsonObj["iespk"].get<string>();
+
+        //check if we've sent a challenge already
+        if(this->auth_solutions_.find(ies_publicKey) != this->auth_solutions_.end()){
+            return true;
+        }
+        //TODO: GEN RANDOM CHALLENGE
+        nlohmann::json payload;
+        payload["data"]["challenge"] = "cipher";
+
+        this->AddChallenge(ies_publicKey,"cipher");
+
+        this->InternalMessage(ies_publicKey,payload,R_AUTH_CHALLENGE,[&](bool success){
+            //success
+            this->mlogger_->Debug("CHALLENGE SEND: ",success);
+        });
         return true;
     });
     this->dht_net_->BXRXChannel([&](const std::vector<std::shared_ptr<dht::Value>>& data)->bool{
@@ -342,7 +469,8 @@ void Litechain::Start() {
 
             auto plain = this->identity_->DecryptData(dat);
             _parsed = nlohmann::json::parse(plain);
-            this->mlogger_->Debug(plain);
+
+            this->mlogger_->Debug(_parsed);
             for(json::iterator parsed = _parsed.begin(); parsed != _parsed.end(); ++parsed){
                 if (!utils::checkParams(*parsed, {"height", "block_header", "merkle_root","tx_hashes"}))
                     return true;
@@ -357,6 +485,7 @@ void Litechain::Start() {
                 b.txs = (*parsed)["transactions"].get<std::unordered_map<std::string,std::string>>();
 
                 this->BXRQVote(b,ies_publicKey);
+//                this->mlogger_->Debug(this->block_rq_votes_[0].size());
                 //check if 2/3 of network agrees
                 for(const auto& height: this->block_rq_votes_){
                     for(const auto& votes: height.second){
@@ -467,6 +596,10 @@ bool Litechain::VerifyMessage(const nlohmann::json& jsonObj){
     if(this->identity_->IESPublicKey() == ies_publicKey)
         return false;
 
+//    if(!(jsonObj["type"].get<int>() == AUTH_CHALLENGE || jsonObj["type"].get<int>() == AUTH_SOLUTION)){
+//        //clear auth solutions for iespk as auth has already been proved
+//        this->auth_solutions_.erase(ies_publicKey);
+//    }
     //check if known node
     if(!(this->verifyPK(ies_publicKey,dsa_publicKey))){
         this->mlogger_->Error("Unknown public key");
@@ -516,7 +649,9 @@ void Litechain::BXRQVote(const Block& b,const std::string& iespk){
 
 void Litechain::InitVote(const Block& b,const std::string& iespk){
     std::lock_guard<std::mutex> lck(this->fork_m);
-    this->init_votes_[b.block_header].push_back(iespk);
+    if(!utils::vectorExists(this->init_votes_[b.block_header],iespk)){
+        this->init_votes_[b.block_header].push_back(iespk);
+    }
 }
 
 void Litechain::CloseVote(const Block& b,const std::string& iespk){
@@ -536,7 +671,7 @@ void Litechain::InternalMessage(const std::string& dest_ies_pk,nlohmann::json da
     payload["iespk"] = this->identity_->IESPublicKey();
     payload["dsapk"] = this->identity_->DSAPublicKey();
 
-    std::string dst = dest_ies_pk;
+    const std::string& dst = dest_ies_pk;
     auto d = payload.dump();
     this->dht_net_->Put(dst,payload.dump(),std::move(cb));
 }
@@ -552,5 +687,45 @@ void Litechain::Announce(const std::function<void(bool)>& cb){
         this->mlogger_->Info("Announcing to: ",node.first);
         this->dht_net_->Put(node.first,payload.dump(),cb);
     }
+
+}
+
+void Litechain::CacheTX(const std::string& hash,const std::string& tx){
+    std::lock_guard<std::mutex> lck(this->mutex);
+    this->transaction_mem_[hash] = tx;
+}
+
+std::string Litechain::GetTransactions(){
+    std::vector<std::string> transactions;
+    for(const auto& tx: this->transaction_mem_){
+        transactions.push_back(tx.second);
+    }
+
+    nlohmann::json payload;
+    payload["transactions"] = transactions;
+    return payload.dump();
+
+}
+
+std::string Litechain::GetTransaction(std::string pubkey,std::string chain){
+    if(this->transaction_mem_.find(pubkey) == this->transaction_mem_.end()){
+        this->RequestTransaction(pubkey,chain);
+        return "";
+    }
+    nlohmann::json payload;
+    payload["transaction"] = this->transaction_mem_[pubkey];
+    return payload.dump();
+
+}
+
+void Litechain::RequestTransaction(std::string pubkey, std::string chain){
+    nlohmann::json payload,data;
+    data["pk"] = pubkey;
+    data["chain"] = chain;
+    payload["data"] = data;
+    std::for_each(this->authenticated_nodes_ies_.begin(),this->authenticated_nodes_ies_.end(),[&](const std::unordered_map<std::string,int>::value_type& nodes){
+        this->DirectMessage(nodes.first,payload,TRANSACTION_RQ,[](bool){});
+    });
+
 
 }

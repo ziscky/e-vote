@@ -48,6 +48,7 @@ class DHTNode{
     public:
         std::string internal_channel_;
         std::string announce_channel_;
+        std::string react_announce_channel_;
         std::string tx_channel_;
         std::string block_channel_;
         std::string sync_channel_;
@@ -56,6 +57,8 @@ class DHTNode{
         std::string init_channel_;
         std::string bxrq_channel_;
         std::string bxrx_channel_;
+        std::string txrq_channel_;
+        std::string txrx_channel_;
 
 
         DHTNode(NodeConf conf,std::shared_ptr<Logger> logger):mlogger_(logger){
@@ -87,6 +90,7 @@ class DHTNode{
         void Get(const std::string&,std::function<void(std::vector<uint8_t>)>);
 
         void AnnounceChannel(std::function<bool(const std::vector<std::shared_ptr<dht::Value>>&)>);
+        void ReactAnnounceChannel(std::function<bool(const std::vector<std::shared_ptr<dht::Value>>&)>);
         void BXChannel(std::function<bool(const std::vector<std::shared_ptr<dht::Value>>&)>);
         void TXChannel(std::function<bool(const std::vector<std::shared_ptr<dht::Value>>&)>);
         
@@ -97,6 +101,8 @@ class DHTNode{
         //
         void ForkChannel(std::function<bool(const std::vector<std::shared_ptr<dht::Value>>&)>);
         void BXRQChannel(std::function<bool(const std::vector<std::shared_ptr<dht::Value>>&)>);
+        void TXRQChannel(std::function<bool(const std::vector<std::shared_ptr<dht::Value>>&)>);
+        void TXRXChannel(std::function<bool(const std::vector<std::shared_ptr<dht::Value>>&)>);
         void BXRXChannel(std::function<bool(const std::vector<std::shared_ptr<dht::Value>>&)>);
         void ChainInitChannel(std::function<bool(const std::vector<std::shared_ptr<dht::Value>>&)>);
         void ChainCloseChannel(std::function<bool(const std::vector<std::shared_ptr<dht::Value>>&)>);
