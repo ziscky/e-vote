@@ -550,6 +550,8 @@ void Blockchain::AddKnownNode(const std::string& ies_pk,const std::string& dsa_p
 
     this->known_nodes_ies_[ies_pk] = 1;
     this->known_nodes_dsa_[dsa_pk] = 1;
+    this->authenticated_nodes_ies_[ies_pk] =1;
+
 }
 
 void Blockchain::AddKnownNodes(const std::string& path){

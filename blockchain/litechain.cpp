@@ -125,6 +125,7 @@ void Litechain::AddKnownNode(const std::string& ies_pk,const std::string& dsa_pk
 
     this->known_nodes_ies_[ies_pk] = 1;
     this->known_nodes_dsa_[dsa_pk] = 1;
+    this->authenticated_nodes_ies_[ies_pk] = 1;
 }
 
 void Litechain::AddKnownNodes(const std::string& path){
