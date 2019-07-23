@@ -9,7 +9,9 @@ option(PYTHON_EXTENSIONS "Build e-vote python extensions" ON)
 include_directories("${CMAKE_SOURCE_DIR}/.")
 add_library(e_vote
         blockchain/blockchain.cpp
+        blockchain/blockchain_dht.cpp
         blockchain/litechain.cpp
+        blockchain/litechain_dht.cpp
         blockchain/merkle.cpp
         network/kdht.cpp
         security/ecc.cpp

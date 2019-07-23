@@ -36,6 +36,9 @@
 
 #define LITE_RX 22
 
+#define XPLR_RQ 444
+#define XPLR_RX 555
+
 
 #include "network/kdht.hpp"
 #include "security/identity.hpp"
@@ -69,7 +72,7 @@ struct Block{
 
     void to_json(json& j, const Block& b) {
         j = json{{"height",b.height},{"block_header", b.block_header}, {"merkle_root", b.merkle_root}, {"tx_hashes", b.tx_hashes},
-                 {"transactions",b.txs},{"prev_hash",b.prev_block},{"next_hash",b.next_block},{"timestamp",b.timestamp},{"type",b.type},};
+                 {"transactions",b.txs},{"prev_hash",b.prev_block},{"next_hash",b.next_block},{"timestamp",b.timestamp},{"type",b.type}};
     }
 
     void from_json(const json& j, Block& b) {
@@ -230,8 +233,15 @@ class Blockchain{
         void StartWorkers();
         bool CheckDuplicate(const std::string& pubkey);
         std::string CheckParentExistence(const std::string& pubkey);
+        std::string CheckForkExistence(const std::string& dsapk);
         std::vector<std::string> getLiteNodes();
-        bool running_ = false;
+        void InitializeInternalChannels();
+        void InitializeExplorerChannels();
+        void InitializeLiteChannels();
+        void InitializeAuthChannels();
+        void InitializeConsensusChannels();
+
+    bool running_ = false;
 
         
     public:

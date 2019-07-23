@@ -111,6 +111,21 @@ void DHTNode::TXRXChannel(std::function<bool(const std::vector<std::shared_ptr<d
     }
 }
 
+void DHTNode::XPLRQChannel(std::function<bool(const std::vector<std::shared_ptr<dht::Value>>&)> cb){
+    try{
+        this->node_.listen(dht::InfoHash::get(xplr_channel_),cb);
+    }catch(const exception& e){
+        this->mlogger_->Error(e.what());
+    }
+}
+
+void DHTNode::XPLRXChannel(std::function<bool(const std::vector<std::shared_ptr<dht::Value>>&)> cb) {
+    try {
+        this->node_.listen(dht::InfoHash::get(xplrx_channel_), cb);
+    } catch (const exception &e) {
+        this->mlogger_->Error(e.what());
+    }
+}
 
 void DHTNode::BXRXChannel(std::function<bool(const std::vector<std::shared_ptr<dht::Value>>&)> cb){
     try{

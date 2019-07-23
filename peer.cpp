@@ -108,7 +108,7 @@ int main(int argc,char **argv){
             lite->BroadcastTX(obj.dump());
         }
         if(line == "getbx"){
-            std::cout<<lite->GetBlock(0,"PARENT")<<std::endl;
+            std::cout<<lite->GetBlock(0,"PARENT",false)<<std::endl;
         }
         if(line == "h" || line == "help"){
             printHelp();

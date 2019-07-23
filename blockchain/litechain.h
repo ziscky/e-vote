@@ -29,6 +29,7 @@ class Litechain {//{
         std::map<int,std::unordered_map<std::string,std::vector<std::string>>> block_rq_votes_;
         std::map<int,std::unordered_map<std::string,Block>> block_rq_mem_;
         std::unordered_map<std::string,std::string> transaction_mem_;
+        std::unordered_map<std::string,std::string> fork_transaction_mem_;
 
         std::unique_ptr<DHTNode> dht_net_;
         void DirectMessage(const std::string& dest_ies_pk,nlohmann::json data,int type,std::function<void(bool)> cb);
@@ -50,7 +51,11 @@ class Litechain {//{
         void InternalMessage(const std::string& dest_ies_pk,nlohmann::json data,int type,std::function<void(bool)> cb);
         void AddKnownNode(const std::string& ies_pk,const std::string& dsa_pk);
         void Announce(const std::function<void(bool)>& cb);
-        void CacheTX(const std::string&,const std::string&);
+        void CacheTX(const std::string&,const std::string&,bool);
+        void InitializeAuthenticationChannels();
+        void InitializeInternalChannels();
+        void InitializeExplorerChannels();
+        void InitializeIntegrationChannels();
 
 
 
@@ -77,20 +82,19 @@ class Litechain {//{
         };
 
         std::string DHTRoutingTable();
-        void Start();
+        void Start(bool explorer= false);
         void InitFork();
         void InitChain(const std::string&);
         void CloseChain();
         std::string SeedKeys(const string& seed,bool deterministic);
-        std::string GetBlock(int height,std::string chain);
+        std::string GetBlock(int height,std::string chain,bool explorer);
         std::string GetTransactions();
         std::string GetTransaction(std::string pubkey,std::string chain);
         void RequestTransaction(std::string pubkey, std::string chain);
         void BroadcastTX(const string& tx);
         void BlockRQ(nlohmann::json);
+        void ExplorerBlockRQ(nlohmann::json);
         void AddKnownNodes(const std::string& path);
-
-
 
 };
 

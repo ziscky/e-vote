@@ -59,6 +59,8 @@ class DHTNode{
         std::string bxrx_channel_;
         std::string txrq_channel_;
         std::string txrx_channel_;
+        std::string xplr_channel_;
+        std::string xplrx_channel_;
 
 
         DHTNode(NodeConf conf,std::shared_ptr<Logger> logger):mlogger_(logger){
@@ -106,11 +108,13 @@ class DHTNode{
         void BXRXChannel(std::function<bool(const std::vector<std::shared_ptr<dht::Value>>&)>);
         void ChainInitChannel(std::function<bool(const std::vector<std::shared_ptr<dht::Value>>&)>);
         void ChainCloseChannel(std::function<bool(const std::vector<std::shared_ptr<dht::Value>>&)>);
-
+        void XPLRQChannel(std::function<bool(const std::vector<std::shared_ptr<dht::Value>>&)>);
+        void XPLRXChannel(std::function<bool(const std::vector<std::shared_ptr<dht::Value>>&)>);
         
         
         std::string RoutingTable();
         void NodeStats();
+
 
 };
 
