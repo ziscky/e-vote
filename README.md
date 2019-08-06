@@ -14,7 +14,7 @@ network design but has fundamental differences in the P2P model and the consensu
 ---
 
 ## Crypto
-All cryptographic functionality is implemented using [Crypto++](https://github.com/ziscky/doom/releases). The network supports
+All cryptographic functionality is implemented using [Crypto++](https://github.com/weidai11/cryptopp). The network supports
 1. Elliptic Curve Integrated Encryption Scheme
 2. Elliptic Curve Digital Signature Algorithm
 
@@ -28,7 +28,7 @@ The Curve used is the NIST recommended curve: secp521r1
 
 ## Network Design
 
-The network backbone is built using [OpenDHT](https://github.com/ziscky/doom/releases) which is animplementation of the Kademlia DHT.
+The network backbone is built using [OpenDHT](https://github.com/savoirfairelinux/opendht) which is animplementation of the Kademlia DHT.
 ### Node discovery
 Each node begins with a list known nodes (i.e the ECIES and ECDSA public keys) and a network bootstrap address. A random challenge is posted on the DHT with the key being the ECDSA public key. This leads to a 4-way handshake that results in the authentication of the individual nodes (proving that the public keys belong to them).
 
@@ -81,24 +81,6 @@ Nodes follow the following process to verify the voting transactions:
 1. Verify the digital signature using the provided derived public key
 2. Check in the parent chain for a signature that can be verified using the supplied public key (i.e the person is a registered voter)
 3. Check in the current chain that the public key cannot verify any other signature (i.e can't vote twice)
-
-
-### Getting Started
-```
-
-Works by reading the /proc pseudo fs so you may need to run the cmds as root
-Also make sure the package: procps-ng is installed.(provides ps|pgrep etc)
-
-Help: doom
-Rank all PIDs by best OOM score:  doom best
-Rank all PIDs by worst OOM score:  doom worst
-PID with worst OOM score:  doom next
-Top 10 worst OOM scores:  doom worst 10
-Top 10 best OOM scores:  doom best 10
-Inspect a particular process by name(in this case chrome):  doom inspect chrome
-Inspect a particular process by PID:  doom inspect 23456
-Show your system's relevant OOM behaviour:  doom policy
-```
 
 
 ### Building From Source
